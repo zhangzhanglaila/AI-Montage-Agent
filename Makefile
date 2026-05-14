@@ -4,11 +4,12 @@
 
 # 安装依赖
 install:
-	pip install -e .
+	pip install -r requirements.txt
 
 # 开发模式安装
 dev:
-	pip install -e ".[dev]"
+	pip install -r requirements.txt
+	pip install pytest black ruff mypy
 
 # 运行测试
 test:

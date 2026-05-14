@@ -1,0 +1,563 @@
+"""
+真正的 Montage Pipeline
+输入：视频文件 + BGM
+输出：混剪视频
+"""
+
+import subprocess
+import json
+import os
+from pathlib import Path
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass
+import numpy as np
+
+# 添加项目路径
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+
+from packages.core_types.models import (
+    Shot, Beat, TimelineEntry, HighlightScore,
+    BeatAnalysis, MotionData, MusicSegment
+)
+
+
+class ShotDetector:
+    """镜头检测 - 使用 FFmpeg scene detect"""
+
+    def __init__(self, cache_dir: str = "cache/shots"):
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def detect(self, video_path: str, threshold: float = 0.3) -> List[Shot]:
+        """检测镜头并切割"""
+        print(f"  检测镜头: {video_path}")
+
+        # 获取视频时长
+        duration = self._get_duration(video_path)
+
+        # 使用 FFmpeg 检测场景变化
+        scenes = self._detect_scenes(video_path, threshold)
+
+        # 如果没检测到场景变化，整个视频作为一个镜头
+        if not scenes:
+            scenes = [(0.0, duration)]
+
+        # 切割视频
+        shots = []
+        for i, (start, end) in enumerate(scenes):
+            shot_path = self.cache_dir / f"shot_{i:04d}.mp4"
+
+            # 切割视频（重新编码以确保元数据完整）
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", video_path,
+                "-ss", str(start),
+                "-to", str(end),
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                str(shot_path)
+            ]
+            subprocess.run(cmd, capture_output=True, check=True)
+
+            shots.append(Shot(
+                shot_id=i,
+                start_time=start,
+                end_time=end,
+                duration=end - start,
+                file_path=str(shot_path)
+            ))
+
+        print(f"  检测到 {len(shots)} 个镜头")
+        return shots
+
+    def _detect_scenes(self, video_path: str, threshold: float) -> List[tuple]:
+        """使用 FFmpeg 检测场景变化"""
+        cmd = [
+            "ffmpeg", "-i", video_path,
+            "-vf", f"select='gt(scene,{threshold})',showinfo",
+            "-f", "null", "-"
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        # 解析时间点
+        import re
+        times = []
+        for line in result.stderr.split('\n'):
+            if 'pts_time' in line:
+                match = re.search(r'pts_time:(\d+\.?\d*)', line)
+                if match:
+                    times.append(float(match.group(1)))
+
+        # 生成场景列表
+        scenes = []
+        for i in range(len(times)):
+            start = times[i]
+            end = times[i + 1] if i + 1 < len(times) else self._get_duration(video_path)
+            scenes.append((start, end))
+
+        # 添加第一个场景
+        if scenes and scenes[0][0] > 0:
+            scenes.insert(0, (0.0, scenes[0][0]))
+
+        return scenes
+
+    def _get_duration(self, video_path: str) -> float:
+        """获取视频时长"""
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return float(result.stdout.strip())
+
+
+class MotionAnalyzer:
+    """运动分析 - 使用 OpenCV 光流"""
+
+    def analyze(self, shot_path: str) -> MotionData:
+        """分析镜头运动"""
+        try:
+            import cv2
+
+            cap = cv2.VideoCapture(shot_path)
+            if not cap.isOpened():
+                return MotionData()
+
+            # 读取第一帧
+            ret, prev_frame = cap.read()
+            if not ret:
+                return MotionData()
+
+            prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+
+            magnitudes = []
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                # 计算光流
+                flow = cv2.calcOpticalFlowFarneback(
+                    prev_gray, gray,
+                    None, 0.5, 3, 15, 3, 5, 1.2, 0
+                )
+
+                # 计算运动幅度
+                magnitude = np.sqrt(flow[..., 0]**2 + flow[..., 1]**2)
+                magnitudes.append(np.mean(magnitude))
+
+                prev_gray = gray
+
+            cap.release()
+
+            if not magnitudes:
+                return MotionData()
+
+            avg_magnitude = np.mean(magnitudes)
+            shake = np.std(magnitudes)
+
+            return MotionData(
+                magnitude=float(avg_magnitude),
+                shake=float(shake)
+            )
+
+        except ImportError:
+            # 如果没有 OpenCV，返回默认值
+            return MotionData(magnitude=0.5, shake=0.1)
+
+
+class BeatAnalyzer:
+    """节拍分析 - 使用 librosa"""
+
+    def analyze(self, audio_path: str) -> BeatAnalysis:
+        """分析 BGM"""
+        print(f"  分析 BGM: {audio_path}")
+
+        try:
+            import librosa
+
+            # 加载音频
+            y, sr = librosa.load(audio_path, sr=22050)
+            duration = len(y) / sr
+
+            # 检测节拍
+            tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
+            beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+
+            # 如果没有检测到节拍，生成默认节拍
+            if len(beat_times) == 0:
+                print("  警告: 未检测到节拍，使用默认节拍")
+                beat_interval = 0.5  # 120 BPM
+                beat_times = np.arange(0, duration, beat_interval)
+
+            # 计算能量
+            rms = librosa.feature.rms(y=y)[0]
+            rms_times = librosa.frames_to_time(np.arange(len(rms)), sr=sr)
+            rms_normalized = (rms - rms.min()) / (rms.max() - rms.min() + 1e-8)
+
+            # 找高潮段
+            threshold = np.percentile(rms_normalized, 80)
+            drops = []
+            in_drop = False
+            drop_start = 0
+
+            for i, (t, e) in enumerate(zip(rms_times, rms_normalized)):
+                if e > threshold and not in_drop:
+                    in_drop = True
+                    drop_start = t
+                elif e <= threshold and in_drop:
+                    in_drop = False
+                    if t - drop_start > 1.0:
+                        drops.append({"start": drop_start, "end": t})
+
+            # 生成能量曲线
+            energy_curve = [
+                {"time": float(t), "energy": float(e)}
+                for t, e in zip(rms_times[::100], rms_normalized[::100])
+            ]
+
+            # 创建节拍对象
+            beats = [
+                Beat(time=float(t), strength=0.8, beat_type="normal")
+                for t in beat_times
+            ]
+
+            return BeatAnalysis(
+                beats=beats,
+                tempo=float(tempo),
+                energy_curve=energy_curve,
+                drops=drops,
+                segments=[],
+                duration=duration
+            )
+
+        except ImportError:
+            # 如果没有 librosa，返回模拟数据
+            print("  警告: librosa 未安装，使用模拟节拍")
+            return self._mock_analysis()
+
+    def _mock_analysis(self) -> BeatAnalysis:
+        """模拟分析结果"""
+        beats = [
+            Beat(time=i * 0.5, strength=0.8, beat_type="normal")
+            for i in range(20)
+        ]
+        return BeatAnalysis(
+            beats=beats,
+            tempo=120.0,
+            energy_curve=[],
+            drops=[],
+            segments=[],
+            duration=10.0
+        )
+
+
+class HighlightScorer:
+    """高光评分"""
+
+    def score(self, shot: Shot, motion: MotionData) -> float:
+        """计算高光分数"""
+        # 运动幅度权重
+        motion_weight = 0.6
+        # 镜头时长权重（太短或太长都不好）
+        duration_weight = 0.4
+
+        # 运动分数
+        motion_score = min(motion.magnitude / 5.0, 1.0)
+
+        # 时长分数（1-3秒最佳）
+        if 1.0 <= shot.duration <= 3.0:
+            duration_score = 1.0
+        elif shot.duration < 1.0:
+            duration_score = shot.duration
+        else:
+            duration_score = max(0.5, 1.0 - (shot.duration - 3.0) * 0.1)
+
+        return motion_weight * motion_score + duration_weight * duration_score
+
+
+class BeatSyncEngine:
+    """卡点同步引擎"""
+
+    def sync(
+        self,
+        shots: List[Shot],
+        beats: List[Beat],
+        style: str = "dynamic"
+    ) -> List[TimelineEntry]:
+        """将镜头与节拍同步"""
+        if not shots or not beats:
+            return []
+
+        # 按高光分数排序
+        sorted_shots = sorted(shots, key=lambda s: s.highlight_score, reverse=True)
+
+        # 获取风格参数
+        params = self._get_style_params(style)
+
+        timeline = []
+        beat_idx = 0
+
+        for i, shot in enumerate(sorted_shots):
+            if beat_idx >= len(beats):
+                break
+
+            # 获取当前节拍
+            beat = beats[beat_idx]
+
+            # 根据高光分数决定时长
+            if shot.highlight_score > 0.7:
+                # 高光镜头，短而快
+                duration = params["fast"]
+            elif shot.highlight_score > 0.4:
+                # 中等镜头
+                duration = params["medium"]
+            else:
+                # 普通镜头
+                duration = params["slow"]
+
+            # 量化到节拍
+            beat_interval = beats[1].time - beats[0].time if len(beats) > 1 else 0.5
+            duration = round(duration / beat_interval) * beat_interval
+
+            # 创建时间线条目
+            entry = TimelineEntry(
+                shot_id=shot.shot_id,
+                shot_path=shot.file_path or "",
+                start_time=beat.time,
+                end_time=beat.time + duration,
+                duration=duration,
+                beat_time=beat.time,
+                speed_factor=1.0,
+                transition_type="cut",
+                transition_duration=0.0
+            )
+
+            timeline.append(entry)
+
+            # 跳过相应的节拍
+            beats_to_skip = max(1, int(duration / beat_interval))
+            beat_idx += beats_to_skip
+
+        # 按时间排序
+        timeline.sort(key=lambda x: x.start_time)
+
+        return timeline
+
+    def _get_style_params(self, style: str) -> Dict[str, float]:
+        """获取风格参数"""
+        params = {
+            "dynamic": {"fast": 0.3, "medium": 0.5, "slow": 1.0},
+            "calm": {"fast": 0.5, "medium": 1.0, "slow": 2.0},
+            "intense": {"fast": 0.2, "medium": 0.3, "slow": 0.5},
+        }
+        return params.get(style, params["dynamic"])
+
+
+class VideoRenderer:
+    """视频渲染器"""
+
+    def __init__(self, output_dir: str = "output"):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def render(
+        self,
+        timeline: List[TimelineEntry],
+        bgm_path: str,
+        output_path: str
+    ) -> str:
+        """渲染最终视频"""
+        print(f"  渲染视频...")
+
+        # 创建 concat 文件
+        concat_file = self.output_dir / "concat.txt"
+        temp_files = []
+
+        with open(concat_file, 'w') as f:
+            for entry in timeline:
+                if not entry.shot_path or not Path(entry.shot_path).exists():
+                    continue
+
+                # 使用绝对路径和正斜杠
+                shot_path = Path(entry.shot_path).resolve().as_posix()
+
+                # 调整速度
+                if entry.speed_factor != 1.0:
+                    temp_path = self.output_dir / f"speed_{entry.shot_id}.mp4"
+                    self._adjust_speed(entry.shot_path, str(temp_path), entry.speed_factor)
+                    temp_files.append(temp_path)
+                    f.write(f"file '{temp_path.resolve().as_posix()}'\n")
+                else:
+                    f.write(f"file '{shot_path}'\n")
+
+        # 拼接视频
+        concat_video = self.output_dir / "concat.mp4"
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_file),
+            "-c", "copy",
+            str(concat_video)
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+
+        # 添加 BGM
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(concat_video),
+            "-i", bgm_path,
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            "-shortest",
+            output_path
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+
+        # 清理临时文件
+        for f in temp_files:
+            f.unlink(missing_ok=True)
+        concat_file.unlink(missing_ok=True)
+        concat_video.unlink(missing_ok=True)
+
+        print(f"  输出: {output_path}")
+        return output_path
+
+    def _adjust_speed(self, input_path: str, output_path: str, speed: float):
+        """调整视频速度"""
+        pts = 1.0 / speed
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", input_path,
+            "-vf", f"setpts={pts}*PTS",
+            "-an",
+            output_path
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+
+
+class MontagePipeline:
+    """混剪 Pipeline - 真正的端到端流程"""
+
+    def __init__(self, cache_dir: str = "cache", output_dir: str = "output"):
+        self.cache_dir = cache_dir
+        self.output_dir = output_dir
+
+        self.shot_detector = ShotDetector(f"{cache_dir}/shots")
+        self.motion_analyzer = MotionAnalyzer()
+        self.beat_analyzer = BeatAnalyzer()
+        self.scorer = HighlightScorer()
+        self.sync_engine = BeatSyncEngine()
+        self.renderer = VideoRenderer(output_dir)
+
+    def run(
+        self,
+        video_paths: List[str],
+        bgm_path: str,
+        style: str = "dynamic",
+        output_name: str = "final.mp4"
+    ) -> str:
+        """
+        运行完整混剪流程
+
+        Args:
+            video_paths: 视频文件路径列表
+            bgm_path: BGM 文件路径
+            style: 风格 (dynamic, calm, intense)
+            output_name: 输出文件名
+
+        Returns:
+            输出文件路径
+        """
+        print("=" * 50)
+        print("AI Montage Agent - 开始混剪")
+        print("=" * 50)
+
+        # Step 1: 检测镜头
+        print("\n[1/5] 检测镜头...")
+        all_shots = []
+        for video_path in video_paths:
+            shots = self.shot_detector.detect(video_path)
+            all_shots.extend(shots)
+
+        if not all_shots:
+            raise ValueError("没有检测到任何镜头")
+
+        # Step 2: 分析运动
+        print("\n[2/5] 分析运动...")
+        for shot in all_shots:
+            motion = self.motion_analyzer.analyze(shot.file_path)
+            shot.motion_score = motion.magnitude
+
+        # Step 3: 评分高光
+        print("\n[3/5] 评分高光...")
+        for shot in all_shots:
+            motion = MotionData(magnitude=shot.motion_score)
+            shot.highlight_score = self.scorer.score(shot, motion)
+
+        # Step 4: 分析 BGM
+        print("\n[4/5] 分析 BGM...")
+        beat_analysis = self.beat_analyzer.analyze(bgm_path)
+
+        # Step 5: 卡点同步 + 渲染
+        print("\n[5/5] 卡点同步 + 渲染...")
+        timeline = self.sync_engine.sync(all_shots, beat_analysis.beats, style)
+
+        if not timeline:
+            raise ValueError("时间线为空")
+
+        # 渲染输出
+        output_path = f"{self.output_dir}/{output_name}"
+        result = self.renderer.render(timeline, bgm_path, output_path)
+
+        print("\n" + "=" * 50)
+        print("混剪完成!")
+        print(f"输出文件: {result}")
+        print(f"镜头数量: {len(all_shots)}")
+        print(f"节拍数量: {len(beat_analysis.beats)}")
+        print(f"BPM: {beat_analysis.tempo:.1f}")
+        print("=" * 50)
+
+        return result
+
+
+def main():
+    """命令行入口"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="AI Montage Agent")
+    parser.add_argument("--movies", nargs="+", required=True, help="视频文件路径")
+    parser.add_argument("--bgm", required=True, help="BGM 文件路径")
+    parser.add_argument("--style", default="dynamic", choices=["dynamic", "calm", "intense"])
+    parser.add_argument("--output", default="final.mp4", help="输出文件名")
+
+    args = parser.parse_args()
+
+    # 检查文件是否存在
+    for movie in args.movies:
+        if not Path(movie).exists():
+            print(f"错误: 视频文件不存在: {movie}")
+            return
+
+    if not Path(args.bgm).exists():
+        print(f"错误: BGM 文件不存在: {args.bgm}")
+        return
+
+    # 运行 pipeline
+    pipeline = MontagePipeline()
+    pipeline.run(args.movies, args.bgm, args.style, args.output)
+
+
+if __name__ == "__main__":
+    main()
