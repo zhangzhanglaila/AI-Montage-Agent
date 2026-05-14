@@ -1,0 +1,57 @@
+# AI Montage Agent Makefile
+
+.PHONY: install dev test lint run clean
+
+# 安装依赖
+install:
+	pip install -e .
+
+# 开发模式安装
+dev:
+	pip install -e ".[dev]"
+
+# 运行测试
+test:
+	pytest tests/ -v
+
+# 代码检查
+lint:
+	black packages/ apps/ tests/
+	ruff check packages/ apps/ tests/
+	mypy packages/
+
+# 运行API服务
+run-api:
+	uvicorn apps.api.src.main:app --reload --host 0.0.0.0 --port 8000
+
+# 运行演示
+demo:
+	python examples/demo.py
+
+# 清理临时文件
+clean:
+	rm -rf temp/ output/ __pycache__ .pytest_cache
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+
+# 格式化代码
+format:
+	black packages/ apps/ tests/
+
+# 检查代码
+check:
+	ruff check packages/ apps/ tests/
+	mypy packages/
+
+# 帮助
+help:
+	@echo "可用命令:"
+	@echo "  make install    - 安装依赖"
+	@echo "  make dev        - 开发模式安装"
+	@echo "  make test       - 运行测试"
+	@echo "  make lint       - 代码检查"
+	@echo "  make run-api    - 运行API服务"
+	@echo "  make demo       - 运行演示"
+	@echo "  make clean      - 清理临时文件"
+	@echo "  make format     - 格式化代码"
+	@echo "  make check      - 检查代码"
