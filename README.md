@@ -47,7 +47,16 @@ python pipeline.py \
   --output my_montage.mp4
 ```
 
-**关键词搜索素材：**
+**关键词搜索素材（推荐 PlayPhrase，电影原片无水印）：**
+```bash
+python pipeline.py \
+  --query "i love you" \
+  --bgm bgm.mp3 \
+  --style dynamic \
+  --output my_montage.mp4
+```
+
+**B站素材（可能有作者水印）：**
 ```bash
 python pipeline.py \
   --query "漫威混剪" \
@@ -108,18 +117,19 @@ python pipeline.py --webui
 
 ### 5. 素材来源
 
-| 来源 | 类型 | API Key | 说明 |
-|------|------|---------|------|
-| `bilibili` | 影视/二创 | 不需要 | B站视频，主力素材源 |
-| `youtube` | 全品类 | 不需要 | 需要能访问 YouTube |
-| `dailymotion` | 全品类 | 不需要 | 国际视频平台 |
-| `douyin` | 短视频 | 不需要 | 抖音视频 |
-| `ixigua` | 影视/综艺 | 不需要 | 西瓜视频 |
-| `acfun` | 动漫/二创 | 不需要 | AcFun 弹幕视频 |
-| `vimeo` | 创意短片 | 不需要 | 高质量创意视频 |
-| `yarn` | 台词搜索 | 不需要 | 英文台词搜片段（需 Playwright） |
-| `playphrase` | 台词搜索 | 不需要 | 英文台词搜片段（需 Playwright） |
-| `quodb` | 台词搜索 | 不需要 | 英文台词搜片段（需 Playwright） |
+| 来源 | 类型 | 说明 |
+|------|------|------|
+| `playphrase` | 电影原片（推荐） | 3900万+英文台词片段，无水印，需 Playwright |
+| `quodb` | 电影台词库 | 提供台词+电影+时间码，需配合其他源下载视频 |
+| `bilibili` | 影视/二创 | B站视频，可能有作者水印 |
+| `youtube` | 全品类 | 需要能访问 YouTube + 登录 cookies |
+| `dailymotion` | 全品类 | 国际视频平台 |
+| `douyin` | 短视频 | 抖音视频 |
+| `ixigua` | 影视/综艺 | 西瓜视频 |
+| `acfun` | 动漫/二创 | AcFun 弹幕视频 |
+| `vimeo` | 创意短片 | 高质量创意视频 |
+| `yarn` | 台词搜索 | 英文台词搜片段（Cloudflare 封锁，暂不可用） |
+| `zhaotaici` | 台词搜索 | 中文台词搜片段（SSL 错误，暂不可用） |
 | `zhaotaici` | 台词搜索 | 不需要 | 中文台词搜片段（需 Playwright） |
 
 **台词搜索源说明：**
@@ -136,7 +146,7 @@ python pipeline.py --webui
 |------|------|--------|
 | `--movies` | 本地视频文件路径（可多个） | - |
 | `--query` | 搜索关键词（与 --movies 二选一） | - |
-| `--source` | 素材来源 | bilibili |
+| `--source` | 素材来源 | playphrase |
 | `--clip-limit` | 最大下载数 | 20 |
 | `--bgm` | BGM 文件路径 | 必填 |
 | `--style` | 风格 (dynamic/calm/intense) | dynamic |

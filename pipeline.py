@@ -544,11 +544,11 @@ def main():
     parser = argparse.ArgumentParser(description="AI Montage Agent")
     parser.add_argument("--movies", nargs="+", help="本地视频文件路径")
     parser.add_argument("--query", type=str, help="搜索关键词，自动下载素材（与 --movies 二选一）")
-    parser.add_argument("--source", type=str, default="bilibili",
-                        choices=["bilibili",
+    parser.add_argument("--source", type=str, default="playphrase",
+                        choices=["playphrase", "quodb", "bilibili",
                                  "youtube", "dailymotion", "douyin", "ixigua", "acfun", "vimeo",
-                                 "yarn", "playphrase", "quodb", "zhaotaici"],
-                        help="素材来源（默认 bilibili）")
+                                 "yarn", "zhaotaici"],
+                        help="素材来源（默认 playphrase）")
     parser.add_argument("--clip-limit", type=int, default=20, help="最大下载片段数，默认 20（仅 --query 模式）")
     parser.add_argument("--bgm", required=True, help="BGM 文件路径")
     parser.add_argument("--style", default="dynamic", choices=["dynamic", "calm", "intense"])

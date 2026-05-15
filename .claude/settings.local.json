@@ -28,7 +28,11 @@
       "Bash(PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright playwright install chromium)",
       "Bash(npx playwright *)",
       "Bash(set PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright)",
-      "Bash(export PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright)"
+      "Bash(export PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright)",
+      "Bash(yt-dlp --js-runtimes node --cookies-from-browser chrome -f \"best[ext=mp4]/best\" -o \"cache/ytdlp/test_yt.mp4\" --no-playlist \"https://www.youtube.com/watch?v=U9XwGlu0FO4\")",
+      "Bash(git ls-files *)",
+      "Bash(git status *)",
+      "Bash(git rm *)"
     ]
   }
 }
