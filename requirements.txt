@@ -4,6 +4,9 @@
 ffmpeg-python>=0.2.0        # FFmpeg Python绑定
 scenedetect[opencv]>=0.6.2  # 镜头检测
 opencv-python>=4.8.0        # 图像处理
+yt-dlp>=2024.1.0            # 视频下载（B站/YouTube等）
+requests>=2.31.0            # HTTP请求
+beautifulsoup4>=4.12.0      # HTML解析
 
 # ============ 音频分析 ============
 librosa>=0.10.0             # 音频分析、节拍检测

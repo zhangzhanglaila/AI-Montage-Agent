@@ -48,17 +48,14 @@ class ShotDetector:
         for i, (start, end) in enumerate(scenes):
             shot_path = self.cache_dir / f"shot_{i:04d}.mp4"
 
-            # 切割视频（重新编码以确保元数据完整）
+            # 切割视频（stream copy，不重新编码，速度极快）
             cmd = [
                 "ffmpeg", "-y",
-                "-i", video_path,
                 "-ss", str(start),
-                "-to", str(end),
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-crf", "23",
-                "-c:a", "aac",
-                "-b:a", "128k",
+                "-i", video_path,
+                "-to", str(end - start),
+                "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
                 str(shot_path)
             ]
             subprocess.run(cmd, capture_output=True, check=True)
@@ -82,12 +79,13 @@ class ShotDetector:
             "-f", "null", "-"
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True)
 
-        # 解析时间点
+        # 解析时间点（用 bytes 处理避免编码问题）
         import re
+        stderr_text = result.stderr.decode('utf-8', errors='ignore') if result.stderr else ""
         times = []
-        for line in result.stderr.split('\n'):
+        for line in stderr_text.split('\n'):
             if 'pts_time' in line:
                 match = re.search(r'pts_time:(\d+\.?\d*)', line)
                 if match:
@@ -114,8 +112,8 @@ class ShotDetector:
             "-of", "default=noprint_wrappers=1:nokey=1",
             video_path
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        return float(result.stdout.strip())
+        result = subprocess.run(cmd, capture_output=True)
+        return float(result.stdout.decode('utf-8', errors='ignore').strip())
 
 
 class MotionAnalyzer:
@@ -466,7 +464,8 @@ class MontagePipeline:
         video_paths: List[str],
         bgm_path: str,
         style: str = "dynamic",
-        output_name: str = "final.mp4"
+        output_name: str = "final.mp4",
+        threshold: float = 0.2,
     ) -> str:
         """
         运行完整混剪流程
@@ -476,6 +475,7 @@ class MontagePipeline:
             bgm_path: BGM 文件路径
             style: 风格 (dynamic, calm, intense)
             output_name: 输出文件名
+            threshold: 镜头检测灵敏度 (0.01~1.0，越小切得越细)
 
         Returns:
             输出文件路径
@@ -485,10 +485,10 @@ class MontagePipeline:
         print("=" * 50)
 
         # Step 1: 检测镜头
-        print("\n[1/5] 检测镜头...")
+        print(f"\n[1/5] 检测镜头 (阈值: {threshold})...")
         all_shots = []
         for video_path in video_paths:
-            shots = self.shot_detector.detect(video_path)
+            shots = self.shot_detector.detect(video_path, threshold=threshold)
             all_shots.extend(shots)
 
         if not all_shots:
@@ -537,18 +537,37 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="AI Montage Agent")
-    parser.add_argument("--movies", nargs="+", required=True, help="视频文件路径")
+    parser.add_argument("--movies", nargs="+", help="本地视频文件路径")
+    parser.add_argument("--query", type=str, help="搜索关键词，自动下载素材（与 --movies 二选一）")
+    parser.add_argument("--source", type=str, default="bilibili",
+                        choices=["bilibili", "pexels", "pixabay"],
+                        help="素材来源：bilibili(B站) / pexels / pixabay（默认 bilibili）")
+    parser.add_argument("--clip-limit", type=int, default=20, help="最大下载片段数，默认 20（仅 --query 模式）")
     parser.add_argument("--bgm", required=True, help="BGM 文件路径")
     parser.add_argument("--style", default="dynamic", choices=["dynamic", "calm", "intense"])
     parser.add_argument("--output", default="final.mp4", help="输出文件名")
+    parser.add_argument("--threshold", type=float, default=0.2,
+                        help="镜头检测灵敏度 0.01~1.0，越小切得越细（默认 0.2，混剪推荐 0.1~0.2）")
 
     args = parser.parse_args()
 
-    # 检查文件是否存在
-    for movie in args.movies:
-        if not Path(movie).exists():
-            print(f"错误: 视频文件不存在: {movie}")
+    # 校验参数：--movies 和 --query 二选一
+    if not args.movies and not args.query:
+        parser.error("请指定 --movies（本地视频）或 --query（搜索素材）")
+    if args.movies and args.query:
+        parser.error("--movies 和 --query 不能同时使用")
+
+    # 获取视频路径
+    if args.query:
+        video_paths = _crawl_videos(args.query, args.source, args.clip_limit, parser)
+        if not video_paths:
             return
+    else:
+        video_paths = args.movies
+        for movie in video_paths:
+            if not Path(movie).exists():
+                print(f"错误: 视频文件不存在: {movie}")
+                return
 
     if not Path(args.bgm).exists():
         print(f"错误: BGM 文件不存在: {args.bgm}")
@@ -556,7 +575,27 @@ def main():
 
     # 运行 pipeline
     pipeline = MontagePipeline()
-    pipeline.run(args.movies, args.bgm, args.style, args.output)
+    pipeline.run(video_paths, args.bgm, args.style, args.output, threshold=args.threshold)
+
+
+def _crawl_videos(keyword: str, source: str, clip_limit: int, parser) -> list:
+    """根据来源爬取视频"""
+    if source == "bilibili":
+        from packages.video_crawler.src.bilibili_crawler import BilibiliCrawler
+        crawler = BilibiliCrawler()
+    elif source in ("pexels", "pixabay"):
+        from packages.video_crawler.src.stock_crawler import create_stock_crawler
+        try:
+            crawler = create_stock_crawler(source)
+        except ValueError as e:
+            parser.error(str(e))
+    else:
+        parser.error(f"不支持的素材来源: {source}")
+
+    paths = crawler.search_and_download(keyword, max_clips=clip_limit)
+    if not paths:
+        print("错误: 未下载到任何视频")
+    return paths
 
 
 if __name__ == "__main__":

@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:getyarn.io)",
+      "mcp__MiniMax__web_search",
+      "WebSearch",
+      "Bash(curl -s -L \"https://getyarn.io\" -o /tmp/yarn_home.html)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -L \"https://getyarn.io/yarn-find?text=hello\" -o /tmp/yarn_search.html)",
+      "Bash(pip install *)",
+      "Bash(curl -s -L https://getyarn.io -H 'User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/120.0.0.0 Safari/537.36' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' -H 'Accept-Language: en-US,en;q=0.5' -H 'Connection: keep-alive' -o /tmp/yarn_ua.html)",
+      "Bash(curl -s -L \"https://yarn.co\" -o /tmp/yarn_co.html)",
+      "Bash(pip list *)",
+      "Bash(curl *)",
+      "Bash(python -c ' *)",
+      "Bash(python pipeline.py --help)",
+      "Bash(python pipeline.py --bgm test.mp3)",
+      "WebFetch(domain:yarn.co)",
+      "Bash(pip show *)",
+      "Bash(pip --version)",
+      "Bash(python *)",
+      "Bash(ffmpeg -y -f lavfi -i \"color=c=red:s=640x360:d=5\" -f lavfi -i \"color=c=blue:s=640x360:d=5\" -f lavfi -i \"color=c=green:s=640x360:d=5\" -f lavfi -i \"color=c=yellow:s=640x360:d=5\" -filter_complex \"[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[outv]\" -map \"[outv]\" -c:v libx264 -preset fast -t 20 test_assets/test_montage.mp4)"
+    ]
+  }
+}

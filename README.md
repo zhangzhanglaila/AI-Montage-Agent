@@ -54,6 +54,8 @@ pip install -r requirements.txt
 
 ### 4. 生成混剪
 
+**方式一：本地视频文件**
+
 ```bash
 python pipeline.py \
   --movies movie1.mp4 movie2.mp4 movie3.mp4 \
@@ -62,8 +64,67 @@ python pipeline.py \
   --output my_montage.mp4
 ```
 
+**方式二：Remix 别人的混剪（拆镜头 → 重排 → 新 BGM）**
+
+把别人的混剪视频当输入，自动切镜头、重新评分、用新 BGM 重新卡点：
+
+```bash
+python pipeline.py \
+  --movies someone_montage.mp4 \
+  --bgm new_bgm.mp3 \
+  --style intense \
+  --output my_remix.mp4
+```
+
+流程：`别人的混剪 → ShotDetector 切镜头 → 逐镜头分析 → 新 BGM 卡点 → 输出新混剪`
+
+**方式三：关键词自动搜索下载素材**
+
+```bash
+# Pexels 素材（无版权，需免费 API Key）
+export PEXELS_API_KEY=your_key_here
+python pipeline.py \
+  --query "avengers fight" \
+  --source pexels \
+  --bgm bgm.mp3 \
+  --style intense \
+  --output my_montage.mp4
+
+# Pixabay 素材（无版权，需免费 API Key）
+export PIXABAY_API_KEY=your_key_here
+python pipeline.py \
+  --query "explosion action" \
+  --source pixabay \
+  --bgm bgm.mp3 \
+  --style intense \
+  --output my_montage.mp4
+
+# B站素材（无需 Key，但内容为二创）
+python pipeline.py \
+  --query "漫威混剪" \
+  --source bilibili \
+  --bgm bgm.mp3 \
+  --style intense \
+  --output my_montage.mp4
+```
+
+**素材来源说明：**
+
+| 来源 | 类型 | API Key | 说明 |
+|------|------|---------|------|
+| `pexels` | 原始素材 | 免费注册 | 无版权高清视频，适合混剪 |
+| `pixabay` | 原始素材 | 免费注册 | 无版权高清视频 |
+| `bilibili` | 二创内容 | 不需要 | B站视频，注意版权 |
+
+**免费 API Key 注册：**
+- Pexels: https://www.pexels.com/api/ （200请求/小时）
+- Pixabay: https://pixabay.com/api/docs/ （5000请求/天）
+
 参数说明：
-- `--movies`：输入视频文件，可以多个
+- `--movies`：本地视频文件路径，可以多个
+- `--query`：搜索关键词，自动下载素材（与 --movies 二选一）
+- `--source`：素材来源（pexels / pixabay / bilibili，默认 bilibili）
+- `--clip-limit`：最大下载片段数，默认 20（仅 --query 模式）
 - `--bgm`：BGM 音频文件
 - `--style`：风格（dynamic/calm/intense）
 - `--output`：输出文件名
@@ -85,6 +146,7 @@ ai-montage-agent/
 ├── packages/
 │   ├── core_types/          # 统一数据类型
 │   ├── video_understanding/ # 视频理解
+│   ├── video_crawler/       # 素材爬取（Pexels/Pixabay/B站）
 │   ├── beat_engine/         # 节拍引擎
 │   ├── montage_engine/      # 蒙太奇引擎
 │   ├── timeline_engine/     # 时间轴引擎
