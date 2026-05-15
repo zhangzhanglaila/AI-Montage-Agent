@@ -5,58 +5,398 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Montage Agent</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700;900&display=swap');
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
-        .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
-        h1 { text-align: center; font-size: 2em; margin-bottom: 8px; background: linear-gradient(135deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .subtitle { text-align: center; color: #888; margin-bottom: 40px; font-size: 0.95em; }
-        .card { background: #1a1a1a; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid #2a2a2a; }
-        .card h2 { font-size: 1.1em; margin-bottom: 16px; color: #fff; }
+
+        body {
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f4f4f5;
+            color: #1a1a1a;
+            min-height: 100vh;
+            /* 半调点阵背景 */
+            background-image: radial-gradient(circle, #ddd 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .container { max-width: 860px; margin: 0 auto; padding: 30px 16px; }
+
+        /* ===== 漫画风标题 ===== */
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+            position: relative;
+            padding: 28px 20px 20px;
+            background: #fff;
+            border: 3px solid #000;
+            box-shadow: 6px 6px 0 #000;
+            overflow: hidden;
+        }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -30px; right: -30px;
+            width: 120px; height: 120px;
+            background: #FB7299;
+            border-radius: 50%;
+            opacity: 0.12;
+        }
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: -20px; left: -20px;
+            width: 80px; height: 80px;
+            background: #00a1d6;
+            border-radius: 50%;
+            opacity: 0.1;
+        }
+        .header h1 {
+            font-size: 2.2em;
+            font-weight: 900;
+            color: #FB7299;
+            letter-spacing: 2px;
+            text-shadow: 3px 3px 0 #000;
+            position: relative;
+        }
+        .header .subtitle {
+            font-size: 0.95em;
+            color: #666;
+            margin-top: 6px;
+            font-weight: 400;
+        }
+
+        /* ===== 漫画卡片 ===== */
+        .card {
+            background: #fff;
+            border: 3px solid #000;
+            box-shadow: 5px 5px 0 #000;
+            padding: 24px;
+            margin-bottom: 20px;
+            position: relative;
+            transition: transform 0.15s;
+        }
+        .card:hover { transform: translate(-1px, -1px); }
+        .card h2 {
+            font-size: 1.15em;
+            font-weight: 900;
+            margin-bottom: 16px;
+            color: #1a1a1a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card h2 .num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px; height: 28px;
+            background: #FB7299;
+            color: #fff;
+            font-size: 0.85em;
+            font-weight: 900;
+            border: 2px solid #000;
+            flex-shrink: 0;
+        }
+
+        /* ===== Tab 切换（B站 pill 风格） ===== */
+        .tab-group { display: flex; gap: 0; margin-bottom: 16px; }
+        .tab {
+            padding: 10px 24px;
+            background: #f4f4f5;
+            border: 2px solid #000;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 700;
+            color: #666;
+            transition: all 0.15s;
+            position: relative;
+        }
+        .tab:first-child { border-radius: 6px 0 0 6px; }
+        .tab:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+        .tab.active {
+            background: #FB7299;
+            color: #fff;
+            border-color: #000;
+            z-index: 1;
+        }
+        .tab:hover:not(.active) { background: #ffe4ec; }
+
+        .hidden { display: none; }
+
+        /* ===== 表单元素 ===== */
         .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; margin-bottom: 6px; font-size: 0.9em; color: #aaa; }
-        input[type="text"], input[type="number"], select { width: 100%; padding: 10px 14px; background: #252525; border: 1px solid #333; border-radius: 8px; color: #e0e0e0; font-size: 0.95em; }
-        input:focus, select:focus { outline: none; border-color: #667eea; }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 0.88em;
+            font-weight: 700;
+            color: #333;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 10px 14px;
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 4px;
+            color: #1a1a1a;
+            font-size: 0.95em;
+            font-family: inherit;
+            transition: box-shadow 0.15s;
+        }
+        input:focus {
+            outline: none;
+            box-shadow: 3px 3px 0 #FB7299;
+            border-color: #FB7299;
+        }
+
+        /* ===== 文件上传（漫画虚线框） ===== */
         .file-upload { display: flex; align-items: center; gap: 12px; }
         .file-upload input[type="file"] { display: none; }
-        .file-upload label { padding: 10px 20px; background: #252525; border: 1px dashed #444; border-radius: 8px; cursor: pointer; text-align: center; flex: 1; transition: border-color 0.2s; }
-        .file-upload label:hover { border-color: #667eea; }
-        .file-upload .file-name { font-size: 0.85em; color: #888; min-width: 120px; }
-        .btn { padding: 12px 32px; border: none; border-radius: 8px; font-size: 1em; cursor: pointer; transition: all 0.2s; }
-        .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; width: 100%; }
-        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
-        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .file-upload label {
+            padding: 12px 20px;
+            background: #fff;
+            border: 3px dashed #000;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+            flex: 1;
+            font-weight: 700;
+            font-size: 0.9em;
+            transition: all 0.15s;
+        }
+        .file-upload label:hover {
+            border-color: #FB7299;
+            background: #ffe4ec;
+        }
+        .file-upload .file-name {
+            font-size: 0.85em;
+            color: #999;
+            min-width: 100px;
+            font-weight: 400;
+        }
+
+        /* ===== 素材来源表格 ===== */
+        .source-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #f4f4f5;
+            border: 2px solid #000;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.95em;
+            margin-bottom: 0;
+            transition: all 0.15s;
+            user-select: none;
+        }
+        .source-toggle:hover { background: #ffe4ec; }
+        .source-toggle .arrow {
+            transition: transform 0.2s;
+            font-size: 0.8em;
+        }
+        .source-toggle.open .arrow { transform: rotate(180deg); }
+        .source-toggle.open { border-bottom-color: #FB7299; }
+
+        .source-table-wrap {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            border: 2px solid #000;
+            border-top: 0;
+            border-radius: 0 0 4px 4px;
+        }
+        .source-table-wrap.open { max-height: 600px; }
+
+        .source-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88em;
+        }
+        .source-table th {
+            background: #1a1a1a;
+            color: #fff;
+            padding: 8px 12px;
+            text-align: left;
+            font-weight: 700;
+            font-size: 0.85em;
+        }
+        .source-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #e0e0e0;
+            vertical-align: middle;
+        }
+        .source-table tr:last-child td { border-bottom: none; }
+        .source-table tr:hover td { background: #ffe4ec; }
+        .source-table tr.disabled td { opacity: 0.45; }
+
+        .source-table input[type="checkbox"] {
+            width: 18px; height: 18px;
+            accent-color: #FB7299;
+            cursor: pointer;
+        }
+        .source-table .source-name { font-weight: 700; }
+
+        /* 状态标签 */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.78em;
+            font-weight: 700;
+            border: 1.5px solid #000;
+        }
+        .badge-recommend { background: #FB7299; color: #fff; }
+        .badge-ok { background: #4CAF50; color: #fff; }
+        .badge-limited { background: #FF9800; color: #fff; }
+        .badge-unavailable { background: #ccc; color: #666; }
+
+        /* 类型标签 */
+        .type-tag {
+            display: inline-block;
+            padding: 1px 6px;
+            background: #00a1d6;
+            color: #fff;
+            border-radius: 3px;
+            font-size: 0.78em;
+            font-weight: 700;
+        }
+
+        /* ===== 风格选择（漫画卡片） ===== */
+        .style-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .style-option {
+            padding: 14px 10px;
+            background: #fff;
+            border: 3px solid #000;
+            box-shadow: 3px 3px 0 #000;
+            cursor: pointer;
+            text-align: center;
+            font-size: 0.9em;
+            font-weight: 700;
+            transition: all 0.12s;
+            position: relative;
+        }
+        .style-option:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 #000; }
+        .style-option.active {
+            background: #FB7299;
+            color: #fff;
+            border-color: #000;
+        }
+        .style-option .style-icon { font-size: 1.5em; display: block; margin-bottom: 4px; }
+
+        /* ===== 提交按钮（漫画大按钮） ===== */
+        .btn {
+            padding: 14px 32px;
+            border: 3px solid #000;
+            font-size: 1.05em;
+            font-weight: 900;
+            cursor: pointer;
+            transition: all 0.12s;
+            font-family: inherit;
+            letter-spacing: 1px;
+        }
+        .btn-primary {
+            background: #FB7299;
+            color: #fff;
+            width: 100%;
+            box-shadow: 5px 5px 0 #000;
+        }
+        .btn-primary:hover {
+            transform: translate(-2px, -2px);
+            box-shadow: 7px 7px 0 #000;
+        }
+        .btn-primary:active {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #000;
+        }
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: 5px 5px 0 #000;
+        }
+
+        /* ===== 进度条 ===== */
         .progress-container { display: none; }
         .progress-container.active { display: block; }
-        .progress-bar { width: 100%; height: 8px; background: #252525; border-radius: 4px; overflow: hidden; margin: 12px 0; }
-        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 4px; transition: width 0.3s; width: 0%; }
-        .progress-status { text-align: center; font-size: 0.9em; color: #aaa; }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #f4f4f5;
+            border: 2px solid #000;
+            border-radius: 0;
+            overflow: hidden;
+            margin: 12px 0;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: #FB7299;
+            transition: width 0.3s;
+            width: 0%;
+            /* 条纹动画 */
+            background-image: linear-gradient(
+                45deg,
+                rgba(255,255,255,0.2) 25%, transparent 25%,
+                transparent 50%, rgba(255,255,255,0.2) 50%,
+                rgba(255,255,255,0.2) 75%, transparent 75%
+            );
+            background-size: 20px 20px;
+            animation: stripe-move 0.8s linear infinite;
+        }
+        @keyframes stripe-move {
+            0% { background-position: 0 0; }
+            100% { background-position: 20px 0; }
+        }
+        .progress-status { text-align: center; font-size: 0.9em; font-weight: 700; color: #333; }
+
+        /* ===== 结果 ===== */
         .result { display: none; text-align: center; padding: 20px; }
         .result.active { display: block; }
-        .result a { color: #667eea; text-decoration: none; font-size: 1.1em; }
-        .result a:hover { text-decoration: underline; }
-        .tab-group { display: flex; gap: 8px; margin-bottom: 16px; }
-        .tab { padding: 8px 16px; background: #252525; border: 1px solid #333; border-radius: 8px; cursor: pointer; font-size: 0.9em; color: #aaa; transition: all 0.2s; }
-        .tab.active { background: #667eea; border-color: #667eea; color: white; }
-        .hidden { display: none; }
-        .style-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-        .style-option { padding: 10px; background: #252525; border: 1px solid #333; border-radius: 8px; cursor: pointer; text-align: center; font-size: 0.9em; transition: all 0.2s; }
-        .style-option:hover { border-color: #667eea; }
-        .style-option.active { border-color: #667eea; background: rgba(102, 126, 234, 0.15); }
+        .result a {
+            color: #FB7299;
+            text-decoration: none;
+            font-size: 1.15em;
+            font-weight: 900;
+            border-bottom: 3px solid #FB7299;
+            padding-bottom: 2px;
+        }
+        .result a:hover { color: #e0507a; border-color: #e0507a; }
+
+        /* ===== 漫画装饰 ===== */
+        .manga-burst {
+            position: absolute;
+            top: -6px; right: -6px;
+            background: #FB7299;
+            color: #fff;
+            font-size: 0.7em;
+            font-weight: 900;
+            padding: 3px 8px;
+            border: 2px solid #000;
+            transform: rotate(6deg);
+            z-index: 2;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>AI Montage Agent</h1>
-        <p class="subtitle">输入关键词或上传视频，AI 自动混剪</p>
+        <!-- 标题 -->
+        <div class="header">
+            <h1>AI MONTAGE AGENT</h1>
+            <p class="subtitle">输入关键词或上传视频，AI 自动混剪</p>
+        </div>
 
-        <!-- 素材来源 -->
+        <!-- 1. 素材来源 -->
         <div class="card">
-            <h2>1. 素材来源</h2>
+            <h2><span class="num">1</span> 素材来源</h2>
+
             <div class="tab-group">
-                <div class="tab active" onclick="switchSource('upload')">本地上传</div>
-                <div class="tab" onclick="switchSource('search')">关键词搜索</div>
+                <div class="tab active" onclick="switchSource('search')">关键词搜索</div>
+                <div class="tab" onclick="switchSource('upload')">本地上传</div>
             </div>
-            <div id="upload-section">
+
+            <!-- 本地上传 -->
+            <div id="upload-section" class="hidden">
                 <div class="form-group">
                     <div class="file-upload">
                         <label for="video-files">选择视频文件（可多选）</label>
@@ -65,37 +405,46 @@
                     </div>
                 </div>
             </div>
-            <div id="search-section" class="hidden">
+
+            <!-- 关键词搜索 -->
+            <div id="search-section">
                 <div class="form-group">
                     <label>搜索关键词</label>
-                    <input type="text" id="search-query" placeholder="如：漫威高燃混剪">
-                </div>
-                <div class="form-group">
-                    <label>素材来源</label>
-                    <select id="search-source">
-                        <option value="playphrase">PlayPhrase (电影原片，推荐)</option>
-                        <option value="quodb">QuoDB (台词搜索)</option>
-                        <option value="bilibili">B站</option>
-                        <option value="youtube">YouTube</option>
-                        <option value="dailymotion">Dailymotion</option>
-                        <option value="douyin">抖音</option>
-                        <option value="ixigua">西瓜视频</option>
-                        <option value="acfun">AcFun</option>
-                        <option value="vimeo">Vimeo</option>
-                        <option value="yarn">YARN (暂不可用)</option>
-                        <option value="zhaotaici">找台词网 (暂不可用)</option>
-                    </select>
+                    <input type="text" id="search-query" placeholder="如：i love you / fight scene / 漫威混剪">
                 </div>
                 <div class="form-group">
                     <label>最大下载数</label>
                     <input type="number" id="clip-limit" value="20" min="1" max="100">
                 </div>
+
+                <!-- 素材来源表格 -->
+                <div class="form-group">
+                    <label>素材来源</label>
+                    <div class="source-toggle" onclick="toggleSourceTable()">
+                        <span>已选择 <strong id="selected-count">1</strong> 个来源</span>
+                        <span class="arrow">&#9660;</span>
+                    </div>
+                    <div class="source-table-wrap" id="source-table-wrap">
+                        <table class="source-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:36px"></th>
+                                    <th>来源</th>
+                                    <th>类型</th>
+                                    <th>说明</th>
+                                    <th style="width:72px">状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="source-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- BGM -->
+        <!-- 2. BGM -->
         <div class="card">
-            <h2>2. 背景音乐</h2>
+            <h2><span class="num">2</span> 背景音乐</h2>
             <div class="file-upload">
                 <label for="bgm-file">选择 BGM 文件</label>
                 <input type="file" id="bgm-file" accept="audio/*" onchange="updateFileNames(this, 'bgm-name')">
@@ -103,13 +452,22 @@
             </div>
         </div>
 
-        <!-- 风格设置 -->
-        <div class="card">
-            <h2>3. 风格设置</h2>
+        <!-- 3. 风格 -->
+        <div class="card" style="position:relative">
+            <h2><span class="num">3</span> 风格设置</h2>
             <div class="style-grid">
-                <div class="style-option active" onclick="selectStyle(this, 'dynamic')">动感快切</div>
-                <div class="style-option" onclick="selectStyle(this, 'calm')">舒缓流畅</div>
-                <div class="style-option" onclick="selectStyle(this, 'intense')">激烈高燃</div>
+                <div class="style-option active" onclick="selectStyle(this, 'dynamic')">
+                    <span class="style-icon">&#9889;</span>
+                    动感快切
+                </div>
+                <div class="style-option" onclick="selectStyle(this, 'calm')">
+                    <span class="style-icon">&#127808;</span>
+                    舒缓流畅
+                </div>
+                <div class="style-option" onclick="selectStyle(this, 'intense')">
+                    <span class="style-icon">&#128293;</span>
+                    激烈高燃
+                </div>
             </div>
             <input type="hidden" id="style-value" value="dynamic">
         </div>
@@ -119,7 +477,7 @@
 
         <!-- 进度 -->
         <div class="card progress-container" id="progress-section">
-            <h2>混剪进度</h2>
+            <h2><span class="num">!</span> 混剪进度</h2>
             <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
             <p class="progress-status" id="progress-msg">准备中...</p>
         </div>
@@ -132,94 +490,156 @@
     </div>
 
     <script>
-        let sourceMode = 'upload';
+        // ===== 素材来源数据 =====
+        const sources = [
+            { value: "playphrase", name: "PlayPhrase", type: "电影原片", desc: "3900万+英文台词片段，无水印", status: "recommend", checked: true },
+            { value: "quodb", name: "QuoDB", type: "台词库", desc: "精确台词+电影+时间码", status: "ok", checked: false },
+            { value: "bilibili", name: "B站", type: "二创", desc: "B站视频，可能有作者水印", status: "ok", checked: false },
+            { value: "youtube", name: "YouTube", type: "全品类", desc: "需要代理+登录cookies", status: "limited", checked: false },
+            { value: "dailymotion", name: "Dailymotion", type: "全品类", desc: "国际视频平台", status: "limited", checked: false },
+            { value: "douyin", name: "抖音", type: "短视频", desc: "不支持搜索，需直接URL", status: "unavailable", checked: false },
+            { value: "ixigua", name: "西瓜视频", type: "影视综艺", desc: "不支持搜索，需直接URL", status: "unavailable", checked: false },
+            { value: "acfun", name: "AcFun", type: "动漫二创", desc: "不支持搜索，需直接URL", status: "unavailable", checked: false },
+            { value: "vimeo", name: "Vimeo", type: "创意短片", desc: "不支持搜索，需直接URL", status: "unavailable", checked: false },
+            { value: "yarn", name: "YARN", type: "台词搜索", desc: "Cloudflare封锁", status: "unavailable", checked: false },
+            { value: "zhaotaici", name: "找台词网", type: "中文台词", desc: "SSL错误，站点下线", status: "unavailable", checked: false },
+        ];
+
+        const badgeMap = {
+            recommend: { text: "推荐", cls: "badge-recommend" },
+            ok: { text: "可用", cls: "badge-ok" },
+            limited: { text: "受限", cls: "badge-limited" },
+            unavailable: { text: "不可用", cls: "badge-unavailable" },
+        };
+
+        // 渲染来源表格
+        function renderSourceTable() {
+            const tbody = document.getElementById("source-tbody");
+            tbody.innerHTML = sources.map((s, i) => {
+                const badge = badgeMap[s.status];
+                const disabled = s.status === "unavailable" ? ' class="disabled"' : "";
+                return `<tr${disabled}>
+                    <td><input type="checkbox" data-index="${i}" ${s.checked ? "checked" : ""} ${s.status === "unavailable" ? "disabled" : ""} onchange="onSourceCheck()"></td>
+                    <td class="source-name">${s.name}</td>
+                    <td><span class="type-tag">${s.type}</span></td>
+                    <td>${s.desc}</td>
+                    <td><span class="badge ${badge.cls}">${badge.text}</span></td>
+                </tr>`;
+            }).join("");
+            updateSelectedCount();
+        }
+
+        function onSourceCheck() {
+            const checks = document.querySelectorAll(".source-table input[type=checkbox]");
+            checks.forEach((cb, i) => { sources[i].checked = cb.checked; });
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const count = sources.filter(s => s.checked).length;
+            document.getElementById("selected-count").textContent = count;
+        }
+
+        function getSelectedSources() {
+            return sources.filter(s => s.checked).map(s => s.value);
+        }
+
+        // 展开/收起来源表格
+        function toggleSourceTable() {
+            const toggle = document.querySelector(".source-toggle");
+            const wrap = document.getElementById("source-table-wrap");
+            toggle.classList.toggle("open");
+            wrap.classList.toggle("open");
+        }
+
+        // ===== Tab 切换 =====
+        let sourceMode = "search";
 
         function switchSource(mode) {
             sourceMode = mode;
-            document.querySelectorAll('.tab-group .tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
-            document.getElementById('upload-section').classList.toggle('hidden', mode !== 'upload');
-            document.getElementById('search-section').classList.toggle('hidden', mode !== 'search');
+            document.querySelectorAll(".tab-group .tab").forEach(t => t.classList.remove("active"));
+            event.target.classList.add("active");
+            document.getElementById("upload-section").classList.toggle("hidden", mode !== "upload");
+            document.getElementById("search-section").classList.toggle("hidden", mode !== "search");
         }
 
+        // ===== 文件上传 =====
         function updateFileNames(input, spanId) {
             const span = document.getElementById(spanId);
-            if (input.files.length === 0) {
-                span.textContent = '未选择文件';
-            } else if (input.files.length === 1) {
-                span.textContent = input.files[0].name;
-            } else {
-                span.textContent = input.files.length + ' 个文件';
-            }
+            if (input.files.length === 0) span.textContent = "未选择文件";
+            else if (input.files.length === 1) span.textContent = input.files[0].name;
+            else span.textContent = input.files.length + " 个文件";
         }
 
+        // ===== 风格选择 =====
         function selectStyle(el, style) {
-            document.querySelectorAll('.style-option').forEach(o => o.classList.remove('active'));
-            el.classList.add('active');
-            document.getElementById('style-value').value = style;
+            document.querySelectorAll(".style-option").forEach(o => o.classList.remove("active"));
+            el.classList.add("active");
+            document.getElementById("style-value").value = style;
         }
 
+        // ===== 上传 & 提交 =====
         async function uploadFiles(files) {
             const formData = new FormData();
-            for (const f of files) formData.append('files', f);
-            const resp = await fetch('/api/upload/video', { method: 'POST', body: formData });
+            for (const f of files) formData.append("files", f);
+            const resp = await fetch("/api/upload/video", { method: "POST", body: formData });
             const data = await resp.json();
             return data.files;
         }
 
         async function uploadBgm(file) {
             const formData = new FormData();
-            formData.append('file', file);
-            const resp = await fetch('/api/upload/bgm', { method: 'POST', body: formData });
+            formData.append("file", file);
+            const resp = await fetch("/api/upload/bgm", { method: "POST", body: formData });
             const data = await resp.json();
             return data.path;
         }
 
         async function submitTask() {
-            const btn = document.getElementById('submit-btn');
+            const btn = document.getElementById("submit-btn");
             btn.disabled = true;
-            btn.textContent = '处理中...';
+            btn.textContent = "处理中...";
 
             try {
                 let videoPaths, bgmPath;
 
-                // 上传 BGM
-                const bgmFile = document.getElementById('bgm-file').files[0];
-                if (!bgmFile) { alert('请选择 BGM 文件'); return; }
+                const bgmFile = document.getElementById("bgm-file").files[0];
+                if (!bgmFile) { alert("请选择 BGM 文件"); return; }
                 bgmPath = await uploadBgm(bgmFile);
 
-                // 获取视频路径
-                if (sourceMode === 'upload') {
-                    const videoFiles = document.getElementById('video-files').files;
-                    if (videoFiles.length === 0) { alert('请选择视频文件'); return; }
+                if (sourceMode === "upload") {
+                    const videoFiles = document.getElementById("video-files").files;
+                    if (videoFiles.length === 0) { alert("请选择视频文件"); return; }
                     videoPaths = await uploadFiles(videoFiles);
                 }
 
-                const style = document.getElementById('style-value').value;
+                const style = document.getElementById("style-value").value;
+                const selectedSources = getSelectedSources();
 
-                // 提交任务
                 const formData = new FormData();
-                formData.append('video_paths', JSON.stringify(videoPaths || []));
-                formData.append('bgm_path', bgmPath);
-                formData.append('style', style);
+                formData.append("video_paths", JSON.stringify(videoPaths || []));
+                formData.append("bgm_path", bgmPath);
+                formData.append("style", style);
 
-                if (sourceMode === 'search') {
-                    formData.append('query', document.getElementById('search-query').value);
-                    formData.append('source', document.getElementById('search-source').value);
-                    formData.append('clip_limit', document.getElementById('clip-limit').value);
+                if (sourceMode === "search") {
+                    const query = document.getElementById("search-query").value;
+                    if (!query) { alert("请输入搜索关键词"); return; }
+                    if (selectedSources.length === 0) { alert("请至少选择一个素材来源"); return; }
+                    formData.append("query", query);
+                    formData.append("source", selectedSources[0]);
+                    formData.append("clip_limit", document.getElementById("clip-limit").value);
                 }
 
-                const resp = await fetch('/api/montage', { method: 'POST', body: formData });
+                const resp = await fetch("/api/montage", { method: "POST", body: formData });
                 const data = await resp.json();
 
-                // 监听进度
-                document.getElementById('progress-section').classList.add('active');
+                document.getElementById("progress-section").classList.add("active");
                 listenProgress(data.task_id);
 
             } catch (e) {
-                alert('错误: ' + e.message);
+                alert("错误: " + e.message);
                 btn.disabled = false;
-                btn.textContent = '开始混剪';
+                btn.textContent = "开始混剪";
             }
         }
 
@@ -227,26 +647,27 @@
             const evtSource = new EventSource(`/api/task/${taskId}/progress`);
             evtSource.onmessage = (e) => {
                 const data = JSON.parse(e.data);
-                document.getElementById('progress-fill').style.width = data.progress + '%';
-                document.getElementById('progress-msg').textContent = data.message;
+                document.getElementById("progress-fill").style.width = data.progress + "%";
+                document.getElementById("progress-msg").textContent = data.message;
 
-                if (data.status === 'done') {
+                if (data.status === "done") {
                     evtSource.close();
-                    document.getElementById('result-section').classList.add('active');
-                    document.getElementById('download-link').href = `/api/download/${taskId}`;
-                    document.getElementById('submit-btn').disabled = false;
-                    document.getElementById('submit-btn').textContent = '开始混剪';
-                } else if (data.status === 'error') {
+                    document.getElementById("result-section").classList.add("active");
+                    document.getElementById("download-link").href = `/api/download/${taskId}`;
+                    document.getElementById("submit-btn").disabled = false;
+                    document.getElementById("submit-btn").textContent = "开始混剪";
+                } else if (data.status === "error") {
                     evtSource.close();
-                    alert('混剪失败: ' + data.message);
-                    document.getElementById('submit-btn').disabled = false;
-                    document.getElementById('submit-btn').textContent = '开始混剪';
+                    alert("混剪失败: " + data.message);
+                    document.getElementById("submit-btn").disabled = false;
+                    document.getElementById("submit-btn").textContent = "开始混剪";
                 }
             };
-            evtSource.onerror = () => {
-                evtSource.close();
-            };
+            evtSource.onerror = () => { evtSource.close(); };
         }
+
+        // 初始化
+        renderSourceTable();
     </script>
 </body>
 </html>
