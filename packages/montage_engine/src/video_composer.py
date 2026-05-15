@@ -44,10 +44,13 @@ class VideoComposer:
     def __init__(
         self,
         transition_engine: Optional[TransitionEngine] = None,
-        ffmpeg_path: str = "ffmpeg"
+        ffmpeg_path: str = "ffmpeg",
+        output_dir: str = "cache/temp"
     ):
         self.transition_engine = transition_engine or TransitionEngine(ffmpeg_path)
         self.ffmpeg_path = ffmpeg_path
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def compose(
         self,
@@ -108,7 +111,7 @@ class VideoComposer:
             start_time = entry.get("start_time", 0)
 
             # 创建临时文件
-            temp_path = f"/tmp/clip_{i:04d}.mp4"
+            temp_path = str(self.output_dir / f"clip_{i:04d}.mp4")
 
             # 使用FFmpeg裁剪
             cmd = [
@@ -155,7 +158,7 @@ class VideoComposer:
             )
 
             # 应用转场
-            output_path = f"/tmp/transition_{i:04d}.mp4"
+            output_path = str(self.output_dir / f"transition_{i:04d}.mp4")
 
             self.transition_engine.apply_transition(
                 result[-1],
@@ -178,10 +181,10 @@ class VideoComposer:
         if not clips:
             raise ValueError("No clips to concatenate")
 
-        output_path = "/tmp/concatenated.mp4"
+        output_path = str(self.output_dir / "concatenated.mp4")
 
         # 创建concat文件列表
-        concat_file = "/tmp/concat_list.txt"
+        concat_file = str(self.output_dir / "concat_list.txt")
         with open(concat_file, 'w') as f:
             for clip in clips:
                 f.write(f"file '{clip}'\n")
@@ -312,7 +315,7 @@ class VideoComposer:
             effect = effects[i] if i < len(effects) else {}
 
             # 创建临时文件
-            temp_path = f"/tmp/clip_effect_{i:04d}.mp4"
+            temp_path = str(self.output_dir / f"clip_effect_{i:04d}.mp4")
 
             # 构建滤镜链
             vf = self._build_effect_filter(effect, config)

@@ -4,7 +4,6 @@ Beat Engine Package
 """
 
 from .beat_detector import BeatDetector
-from .energy_analyzer import EnergyAnalyzer
-from .structure_analyzer import StructureAnalyzer
+from .beat_sync_engine import BeatSyncEngine
 
-__all__ = ["BeatDetector", "EnergyAnalyzer", "StructureAnalyzer"]
+__all__ = ["BeatDetector", "BeatSyncEngine"]

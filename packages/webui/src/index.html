@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Montage Agent</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
+        .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+        h1 { text-align: center; font-size: 2em; margin-bottom: 8px; background: linear-gradient(135deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 40px; font-size: 0.95em; }
+        .card { background: #1a1a1a; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid #2a2a2a; }
+        .card h2 { font-size: 1.1em; margin-bottom: 16px; color: #fff; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-size: 0.9em; color: #aaa; }
+        input[type="text"], input[type="number"], select { width: 100%; padding: 10px 14px; background: #252525; border: 1px solid #333; border-radius: 8px; color: #e0e0e0; font-size: 0.95em; }
+        input:focus, select:focus { outline: none; border-color: #667eea; }
+        .file-upload { display: flex; align-items: center; gap: 12px; }
+        .file-upload input[type="file"] { display: none; }
+        .file-upload label { padding: 10px 20px; background: #252525; border: 1px dashed #444; border-radius: 8px; cursor: pointer; text-align: center; flex: 1; transition: border-color 0.2s; }
+        .file-upload label:hover { border-color: #667eea; }
+        .file-upload .file-name { font-size: 0.85em; color: #888; min-width: 120px; }
+        .btn { padding: 12px 32px; border: none; border-radius: 8px; font-size: 1em; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); color: white; width: 100%; }
+        .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .progress-container { display: none; }
+        .progress-container.active { display: block; }
+        .progress-bar { width: 100%; height: 8px; background: #252525; border-radius: 4px; overflow: hidden; margin: 12px 0; }
+        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); border-radius: 4px; transition: width 0.3s; width: 0%; }
+        .progress-status { text-align: center; font-size: 0.9em; color: #aaa; }
+        .result { display: none; text-align: center; padding: 20px; }
+        .result.active { display: block; }
+        .result a { color: #667eea; text-decoration: none; font-size: 1.1em; }
+        .result a:hover { text-decoration: underline; }
+        .tab-group { display: flex; gap: 8px; margin-bottom: 16px; }
+        .tab { padding: 8px 16px; background: #252525; border: 1px solid #333; border-radius: 8px; cursor: pointer; font-size: 0.9em; color: #aaa; transition: all 0.2s; }
+        .tab.active { background: #667eea; border-color: #667eea; color: white; }
+        .hidden { display: none; }
+        .style-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .style-option { padding: 10px; background: #252525; border: 1px solid #333; border-radius: 8px; cursor: pointer; text-align: center; font-size: 0.9em; transition: all 0.2s; }
+        .style-option:hover { border-color: #667eea; }
+        .style-option.active { border-color: #667eea; background: rgba(102, 126, 234, 0.15); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Montage Agent</h1>
+        <p class="subtitle">输入关键词或上传视频，AI 自动混剪</p>
+
+        <!-- 素材来源 -->
+        <div class="card">
+            <h2>1. 素材来源</h2>
+            <div class="tab-group">
+                <div class="tab active" onclick="switchSource('upload')">本地上传</div>
+                <div class="tab" onclick="switchSource('search')">关键词搜索</div>
+            </div>
+            <div id="upload-section">
+                <div class="form-group">
+                    <div class="file-upload">
+                        <label for="video-files">选择视频文件（可多选）</label>
+                        <input type="file" id="video-files" accept="video/*" multiple onchange="updateFileNames(this, 'video-names')">
+                        <span class="file-name" id="video-names">未选择文件</span>
+                    </div>
+                </div>
+            </div>
+            <div id="search-section" class="hidden">
+                <div class="form-group">
+                    <label>搜索关键词</label>
+                    <input type="text" id="search-query" placeholder="如：漫威高燃混剪">
+                </div>
+                <div class="form-group">
+                    <label>素材来源</label>
+                    <select id="search-source">
+                        <option value="bilibili">B站</option>
+                        <option value="youtube">YouTube</option>
+                        <option value="dailymotion">Dailymotion</option>
+                        <option value="douyin">抖音</option>
+                        <option value="ixigua">西瓜视频</option>
+                        <option value="acfun">AcFun</option>
+                        <option value="vimeo">Vimeo</option>
+                        <option value="yarn">YARN (台词搜索)</option>
+                        <option value="playphrase">PlayPhrase (台词搜索)</option>
+                        <option value="quodb">QuoDB (台词搜索)</option>
+                        <option value="zhaotaici">找台词网 (中文台词)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>最大下载数</label>
+                    <input type="number" id="clip-limit" value="20" min="1" max="100">
+                </div>
+            </div>
+        </div>
+
+        <!-- BGM -->
+        <div class="card">
+            <h2>2. 背景音乐</h2>
+            <div class="file-upload">
+                <label for="bgm-file">选择 BGM 文件</label>
+                <input type="file" id="bgm-file" accept="audio/*" onchange="updateFileNames(this, 'bgm-name')">
+                <span class="file-name" id="bgm-name">未选择文件</span>
+            </div>
+        </div>
+
+        <!-- 风格设置 -->
+        <div class="card">
+            <h2>3. 风格设置</h2>
+            <div class="style-grid">
+                <div class="style-option active" onclick="selectStyle(this, 'dynamic')">动感快切</div>
+                <div class="style-option" onclick="selectStyle(this, 'calm')">舒缓流畅</div>
+                <div class="style-option" onclick="selectStyle(this, 'intense')">激烈高燃</div>
+            </div>
+            <input type="hidden" id="style-value" value="dynamic">
+        </div>
+
+        <!-- 提交 -->
+        <button class="btn btn-primary" id="submit-btn" onclick="submitTask()">开始混剪</button>
+
+        <!-- 进度 -->
+        <div class="card progress-container" id="progress-section">
+            <h2>混剪进度</h2>
+            <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
+            <p class="progress-status" id="progress-msg">准备中...</p>
+        </div>
+
+        <!-- 结果 -->
+        <div class="card result" id="result-section">
+            <h2>混剪完成!</h2>
+            <p style="margin: 16px 0;"><a id="download-link" href="#">下载视频</a></p>
+        </div>
+    </div>
+
+    <script>
+        let sourceMode = 'upload';
+
+        function switchSource(mode) {
+            sourceMode = mode;
+            document.querySelectorAll('.tab-group .tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('upload-section').classList.toggle('hidden', mode !== 'upload');
+            document.getElementById('search-section').classList.toggle('hidden', mode !== 'search');
+        }
+
+        function updateFileNames(input, spanId) {
+            const span = document.getElementById(spanId);
+            if (input.files.length === 0) {
+                span.textContent = '未选择文件';
+            } else if (input.files.length === 1) {
+                span.textContent = input.files[0].name;
+            } else {
+                span.textContent = input.files.length + ' 个文件';
+            }
+        }
+
+        function selectStyle(el, style) {
+            document.querySelectorAll('.style-option').forEach(o => o.classList.remove('active'));
+            el.classList.add('active');
+            document.getElementById('style-value').value = style;
+        }
+
+        async function uploadFiles(files) {
+            const formData = new FormData();
+            for (const f of files) formData.append('files', f);
+            const resp = await fetch('/api/upload/video', { method: 'POST', body: formData });
+            const data = await resp.json();
+            return data.files;
+        }
+
+        async function uploadBgm(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            const resp = await fetch('/api/upload/bgm', { method: 'POST', body: formData });
+            const data = await resp.json();
+            return data.path;
+        }
+
+        async function submitTask() {
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.textContent = '处理中...';
+
+            try {
+                let videoPaths, bgmPath;
+
+                // 上传 BGM
+                const bgmFile = document.getElementById('bgm-file').files[0];
+                if (!bgmFile) { alert('请选择 BGM 文件'); return; }
+                bgmPath = await uploadBgm(bgmFile);
+
+                // 获取视频路径
+                if (sourceMode === 'upload') {
+                    const videoFiles = document.getElementById('video-files').files;
+                    if (videoFiles.length === 0) { alert('请选择视频文件'); return; }
+                    videoPaths = await uploadFiles(videoFiles);
+                }
+
+                const style = document.getElementById('style-value').value;
+
+                // 提交任务
+                const formData = new FormData();
+                formData.append('video_paths', JSON.stringify(videoPaths || []));
+                formData.append('bgm_path', bgmPath);
+                formData.append('style', style);
+
+                if (sourceMode === 'search') {
+                    formData.append('query', document.getElementById('search-query').value);
+                    formData.append('source', document.getElementById('search-source').value);
+                    formData.append('clip_limit', document.getElementById('clip-limit').value);
+                }
+
+                const resp = await fetch('/api/montage', { method: 'POST', body: formData });
+                const data = await resp.json();
+
+                // 监听进度
+                document.getElementById('progress-section').classList.add('active');
+                listenProgress(data.task_id);
+
+            } catch (e) {
+                alert('错误: ' + e.message);
+                btn.disabled = false;
+                btn.textContent = '开始混剪';
+            }
+        }
+
+        function listenProgress(taskId) {
+            const evtSource = new EventSource(`/api/task/${taskId}/progress`);
+            evtSource.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                document.getElementById('progress-fill').style.width = data.progress + '%';
+                document.getElementById('progress-msg').textContent = data.message;
+
+                if (data.status === 'done') {
+                    evtSource.close();
+                    document.getElementById('result-section').classList.add('active');
+                    document.getElementById('download-link').href = `/api/download/${taskId}`;
+                    document.getElementById('submit-btn').disabled = false;
+                    document.getElementById('submit-btn').textContent = '开始混剪';
+                } else if (data.status === 'error') {
+                    evtSource.close();
+                    alert('混剪失败: ' + data.message);
+                    document.getElementById('submit-btn').disabled = false;
+                    document.getElementById('submit-btn').textContent = '开始混剪';
+                }
+            };
+            evtSource.onerror = () => {
+                evtSource.close();
+            };
+        }
+    </script>
+</body>
+</html>

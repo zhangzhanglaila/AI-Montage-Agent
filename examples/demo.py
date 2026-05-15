@@ -11,13 +11,14 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "packages"))
 sys.path.insert(0, str(project_root))
 
-from packages.video-understanding.src.shot_detector import ShotDetector, Shot
-from packages.beat-engine.src.beat_detector import BeatDetector
-from packages.beat-engine.src.beat_sync_engine import BeatSyncEngine
-from packages.video-understanding.src.highlight_scorer import HighlightScorer
-from packages.timeline-engine.src.timeline_planner import TimelinePlanner
-from packages.timeline-engine.src.emotion_curve import EmotionCurve
-from packages.timeline-engine.src.rhythm_planner import RhythmPlanner
+from packages.video_understanding.src.shot_detector import ShotDetector
+from packages.core_types.models import Shot
+from packages.beat_engine.src.beat_detector import BeatDetector
+from packages.beat_engine.src.beat_sync_engine import BeatSyncEngine
+from packages.video_understanding.src.highlight_scorer import HighlightScorer
+from packages.timeline_engine.src.timeline_planner import TimelinePlanner
+from packages.timeline_engine.src.emotion_curve import EmotionCurve
+from packages.timeline_engine.src.rhythm_planner import RhythmPlanner
 
 
 def demo_shot_detection():

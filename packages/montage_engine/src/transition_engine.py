@@ -4,6 +4,7 @@ Transition Engine
 """
 
 import subprocess
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
@@ -205,7 +206,7 @@ class TransitionEngine:
             if i == 0:
                 temp_output = output_path
             else:
-                temp_output = f"/tmp/transition_temp_{i}.mp4"
+                temp_output = str(Path(output_path).parent / f"transition_temp_{i}.mp4")
                 temp_files.append(temp_output)
 
             self.apply_transition(

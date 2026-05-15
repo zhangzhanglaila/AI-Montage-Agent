@@ -4,6 +4,5 @@ Render Engine Package
 """
 
 from .ffmpeg_executor import FFmpegExecutor
-from .video_renderer import VideoRenderer
 
-__all__ = ["FFmpegExecutor", "VideoRenderer"]
+__all__ = ["FFmpegExecutor"]

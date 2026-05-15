@@ -4,7 +4,6 @@ Video Understanding Package
 """
 
 from .shot_detector import ShotDetector
-from .feature_extractor import FeatureExtractor
-from .semantic_analyzer import SemanticAnalyzer
+from .highlight_scorer import HighlightScorer
 
-__all__ = ["ShotDetector", "FeatureExtractor", "SemanticAnalyzer"]
+__all__ = ["ShotDetector", "HighlightScorer"]

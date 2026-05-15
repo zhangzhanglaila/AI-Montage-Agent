@@ -73,6 +73,7 @@ class BilibiliCrawler:
                     params=params,
                     headers=self.HEADERS,
                     timeout=10,
+                    proxies={"http": None, "https": None},
                 )
                 data = resp.json()
 

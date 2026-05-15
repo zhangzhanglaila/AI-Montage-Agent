@@ -517,6 +517,11 @@ class MontagePipeline:
         if not timeline:
             raise ValueError("时间线为空")
 
+        # 存储时间线数据（供导出使用）
+        self._last_timeline = timeline
+        self._last_bgm_path = bgm_path
+        self._last_total_duration = sum(e.duration for e in timeline)
+
         # 渲染输出
         output_path = f"{self.output_dir}/{output_name}"
         result = self.renderer.render(timeline, bgm_path, output_path)
@@ -540,16 +545,36 @@ def main():
     parser.add_argument("--movies", nargs="+", help="本地视频文件路径")
     parser.add_argument("--query", type=str, help="搜索关键词，自动下载素材（与 --movies 二选一）")
     parser.add_argument("--source", type=str, default="bilibili",
-                        choices=["bilibili", "pexels", "pixabay"],
-                        help="素材来源：bilibili(B站) / pexels / pixabay（默认 bilibili）")
+                        choices=["bilibili",
+                                 "youtube", "dailymotion", "douyin", "ixigua", "acfun", "vimeo",
+                                 "yarn", "playphrase", "quodb", "zhaotaici"],
+                        help="素材来源（默认 bilibili）")
     parser.add_argument("--clip-limit", type=int, default=20, help="最大下载片段数，默认 20（仅 --query 模式）")
     parser.add_argument("--bgm", required=True, help="BGM 文件路径")
     parser.add_argument("--style", default="dynamic", choices=["dynamic", "calm", "intense"])
     parser.add_argument("--output", default="final.mp4", help="输出文件名")
     parser.add_argument("--threshold", type=float, default=0.2,
                         help="镜头检测灵敏度 0.01~1.0，越小切得越细（默认 0.2，混剪推荐 0.1~0.2）")
+    # 新增功能参数
+    parser.add_argument("--prompt", type=str, help="自然语言描述，如 '做一个30秒的漫威高燃混剪'")
+    parser.add_argument("--subtitles", type=str, default="none",
+                        choices=["none", "tiktok", "youtube", "minimal", "cinematic"],
+                        help="字幕风格（默认 none）")
+    parser.add_argument("--enhance", nargs="*", default=[],
+                        help="视频增强选项: stabilize denoise color-grade")
+    parser.add_argument("--export-timeline", type=str,
+                        choices=["edl", "csv", "json", "xml"],
+                        help="导出时间轴格式")
+    parser.add_argument("--webui", action="store_true", help="启动 WebUI 界面")
 
     args = parser.parse_args()
+
+    # WebUI 模式
+    if args.webui:
+        from packages.webui import start_webui
+        print("启动 WebUI: http://localhost:8000")
+        start_webui()
+        return
 
     # 校验参数：--movies 和 --query 二选一
     if not args.movies and not args.query:
@@ -573,9 +598,148 @@ def main():
         print(f"错误: BGM 文件不存在: {args.bgm}")
         return
 
+    # LLM 自然语言控制
+    if args.prompt:
+        from packages.ai_director import CreativeDirector
+        director = CreativeDirector()
+        instructions = director.interpret_prompt(args.prompt)
+        if instructions:
+            # 从 LLM 指令中提取参数
+            style_map = {"intense": "intense", "calm": "calm", "dynamic": "dynamic"}
+            llm_speed = instructions.get("pacing", {}).get("speed", "dynamic")
+            args.style = style_map.get(llm_speed, args.style)
+            print(f"  AI 导演建议风格: {args.style}")
+
+            # 自动设置调色
+            effects = instructions.get("effects", {})
+            color_preset = effects.get("color_grading", "")
+            if color_preset and color_preset != "neutral":
+                if "color-grade" not in args.enhance:
+                    args.enhance.append("color-grade")
+                print(f"  AI 导演建议调色: {color_preset}")
+
+            # 自动设置字幕
+            if args.subtitles == "none" and instructions.get("subtitles"):
+                args.subtitles = instructions["subtitles"]
+
+            # 自动设置目标时长
+            target_dur = instructions.get("constraints", {}).get("target_duration_sec")
+            if target_dur:
+                print(f"  AI 导演建议时长: {target_dur}s")
+
     # 运行 pipeline
     pipeline = MontagePipeline()
-    pipeline.run(video_paths, args.bgm, args.style, args.output, threshold=args.threshold)
+    result_path = pipeline.run(video_paths, args.bgm, args.style, args.output, threshold=args.threshold)
+
+    # 后处理：视频增强
+    if args.enhance:
+        _apply_enhancement(result_path, args.enhance, getattr(args, '_color_preset', None))
+
+    # 后处理：字幕压制
+    if args.subtitles != "none":
+        _apply_subtitles(result_path, args.subtitles)
+
+    # 导出时间轴
+    if args.export_timeline:
+        _export_timeline(pipeline, args.export_timeline)
+
+
+def _apply_enhancement(video_path: str, enhance_options: list, color_preset: str = None):
+    """对输出视频应用增强"""
+    from packages.video_enhancement import enhance_video, stabilize_video, apply_color_grade
+
+    temp_path = video_path + ".enhanced.mp4"
+    enhanced = False
+
+    if "stabilize" in enhance_options:
+        print("\n  应用防抖...")
+        stabilize_video(video_path, temp_path)
+        import shutil
+        shutil.move(temp_path, video_path)
+        enhanced = True
+
+    if "denoise" in enhance_options:
+        print("  应用降噪...")
+        enhance_video(video_path, temp_path, denoise=True)
+        import shutil
+        shutil.move(temp_path, video_path)
+        enhanced = True
+
+    if "color-grade" in enhance_options:
+        preset = color_preset or "cinematic"
+        print(f"  应用调色: {preset}")
+        apply_color_grade(video_path, temp_path, preset=preset)
+        import shutil
+        shutil.move(temp_path, video_path)
+        enhanced = True
+
+    if enhanced:
+        print("  增强完成!")
+
+
+def _apply_subtitles(video_path: str, style: str):
+    """对输出视频应用字幕"""
+    try:
+        from packages.subtitle_engine import Transcriber, burn_captions
+        import tempfile
+
+        print(f"\n  生成字幕 (风格: {style})...")
+
+        # 1. 用 Whisper 转录
+        transcriber = Transcriber(backend="whisper", model_size="base")
+        srt_path = video_path.replace(".mp4", ".srt")
+        transcriber.transcribe(video_path, output_path=srt_path, output_format="srt")
+        print(f"  字幕文件: {srt_path}")
+
+        # 2. 烧录字幕
+        output_path = video_path.replace(".mp4", "_subtitled.mp4")
+        burn_captions(video_path, srt_path, style=style, output_path=output_path)
+
+        # 3. 替换原文件
+        import shutil
+        shutil.move(output_path, video_path)
+        print(f"  字幕烧录完成!")
+    except ImportError as e:
+        print(f"  字幕功能需要安装 whisper: pip install openai-whisper")
+        print(f"  错误: {e}")
+    except Exception as e:
+        print(f"  字幕处理失败: {e}")
+
+
+def _export_timeline(pipeline, format: str):
+    """导出时间轴"""
+    from packages.timeline_export import TimelineExporter, Timeline, Clip
+
+    # 从 pipeline 中收集的时间线数据构建 Timeline 对象
+    timeline_entries = getattr(pipeline, '_last_timeline', [])
+    bgm_path = getattr(pipeline, '_last_bgm_path', '')
+    total_duration = getattr(pipeline, '_last_total_duration', 0.0)
+
+    if not timeline_entries:
+        print(f"\n  导出时间轴: 无时间线数据（需要先运行 pipeline）")
+        return
+
+    # 转换为 Clip 对象
+    clips = []
+    for entry in timeline_entries:
+        clips.append(Clip(
+            source_path=getattr(entry, 'shot_path', ''),
+            start_time=getattr(entry, 'start_time', 0.0),
+            duration=getattr(entry, 'duration', 0.0),
+            timeline_start=getattr(entry, 'start_time', 0.0),
+        ))
+
+    timeline = Timeline(
+        clips=clips,
+        audio_path=bgm_path,
+        total_duration=total_duration,
+    )
+
+    exporter = TimelineExporter(output_dir=pipeline.output_dir)
+    exported = exporter.export(timeline, formats=[format])
+
+    for fmt, path in exported.items():
+        print(f"  导出 {fmt.upper()}: {path}")
 
 
 def _crawl_videos(keyword: str, source: str, clip_limit: int, parser) -> list:
@@ -583,10 +747,16 @@ def _crawl_videos(keyword: str, source: str, clip_limit: int, parser) -> list:
     if source == "bilibili":
         from packages.video_crawler.src.bilibili_crawler import BilibiliCrawler
         crawler = BilibiliCrawler()
-    elif source in ("pexels", "pixabay"):
-        from packages.video_crawler.src.stock_crawler import create_stock_crawler
+    elif source in ("youtube", "dailymotion", "douyin", "ixigua", "acfun", "vimeo"):
+        from packages.video_crawler.src.ytdlp_crawler import create_crawler
         try:
-            crawler = create_stock_crawler(source)
+            crawler = create_crawler(source)
+        except ValueError as e:
+            parser.error(str(e))
+    elif source in ("yarn", "playphrase", "quodb", "zhaotaici"):
+        from packages.video_crawler.src.quote_crawler import create_quote_crawler
+        try:
+            crawler = create_quote_crawler(source)
         except ValueError as e:
             parser.error(str(e))
     else:

@@ -19,7 +19,16 @@
       "Bash(pip show *)",
       "Bash(pip --version)",
       "Bash(python *)",
-      "Bash(ffmpeg -y -f lavfi -i \"color=c=red:s=640x360:d=5\" -f lavfi -i \"color=c=blue:s=640x360:d=5\" -f lavfi -i \"color=c=green:s=640x360:d=5\" -f lavfi -i \"color=c=yellow:s=640x360:d=5\" -filter_complex \"[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[outv]\" -map \"[outv]\" -c:v libx264 -preset fast -t 20 test_assets/test_montage.mp4)"
+      "Bash(ffmpeg -y -f lavfi -i \"color=c=red:s=640x360:d=5\" -f lavfi -i \"color=c=blue:s=640x360:d=5\" -f lavfi -i \"color=c=green:s=640x360:d=5\" -f lavfi -i \"color=c=yellow:s=640x360:d=5\" -filter_complex \"[0:v][1:v][2:v][3:v]concat=n=4:v=1:a=0[outv]\" -map \"[outv]\" -c:v libx264 -preset fast -t 20 test_assets/test_montage.mp4)",
+      "Bash(yt-dlp --flat-playlist --dump-json --no-download \"https://getyarn.io/yarn-find?text=i+love+you\")",
+      "Bash(grep -oE '<p class=\"[^\"]*\">[^<]{10,100}</p>')",
+      "Bash(yt-dlp --impersonate chrome --flat-playlist --dump-json --no-download \"https://getyarn.io/yarn-find?text=i+love+you\")",
+      "Bash(playwright install *)",
+      "Bash(PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright playwright install chromium)",
+      "Bash(PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright playwright install chromium)",
+      "Bash(npx playwright *)",
+      "Bash(set PLAYWRIGHT_DOWNLOAD_HOST=https://registry.npmmirror.com/-/binary/playwright)",
+      "Bash(export PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright)"
     ]
   }
 }
