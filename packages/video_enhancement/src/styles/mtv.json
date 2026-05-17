@@ -1,0 +1,12 @@
+{
+  "id": "mtv",
+  "name": "MTV Fast-Paced",
+  "description": "Rapid 1-2 beat cuts, high energy music video style",
+  "params": {
+    "style": {"name": "mtv", "mood": "energetic"},
+    "pacing": {"speed": "very_fast", "climax_intensity": 1.0},
+    "transitions": {"type": "hard_cuts", "crossfade_duration": 0.0},
+    "effects": {"color_grading": "vibrant", "stabilization": false, "sharpness": true},
+    "energy_mapping": {"sync_to_beats": true, "amplification": 1.5}
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "lofi",
+  "name": "Lo-Fi Chill",
+  "description": "Dreamy, relaxed pacing with vintage color grading",
+  "params": {
+    "style": {"name": "lofi", "mood": "dreamy"},
+    "pacing": {"speed": "slow", "climax_intensity": 0.3},
+    "transitions": {"type": "dissolve", "crossfade_duration": 1.2},
+    "effects": {"color_grading": "vintage", "stabilization": true, "sharpness": false, "film_grain": 0.3},
+    "energy_mapping": {"sync_to_beats": false, "amplification": 0.5}
+  }
+}

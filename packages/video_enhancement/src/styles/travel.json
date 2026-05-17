@@ -1,0 +1,12 @@
+{
+  "id": "travel",
+  "name": "Travel Vlog",
+  "description": "Scenic beauty, relaxed pacing, warm colors",
+  "params": {
+    "style": {"name": "travel", "mood": "serene"},
+    "pacing": {"speed": "medium", "climax_intensity": 0.5},
+    "transitions": {"type": "crossfade", "crossfade_duration": 0.8},
+    "effects": {"color_grading": "golden_hour", "stabilization": true, "sharpness": false},
+    "energy_mapping": {"sync_to_beats": true, "amplification": 0.8}
+  }
+}

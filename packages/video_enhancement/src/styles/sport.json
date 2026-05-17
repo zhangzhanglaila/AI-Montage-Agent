@@ -1,0 +1,12 @@
+{
+  "id": "sport",
+  "name": "Sport Highlight",
+  "description": "High-energy action sequences for sports highlights",
+  "params": {
+    "style": {"name": "sport", "mood": "intense"},
+    "pacing": {"speed": "fast", "climax_intensity": 0.9},
+    "transitions": {"type": "hard_cuts", "crossfade_duration": 0.0},
+    "effects": {"color_grading": "high_contrast", "stabilization": false, "sharpness": true},
+    "energy_mapping": {"sync_to_beats": true, "amplification": 1.6}
+  }
+}

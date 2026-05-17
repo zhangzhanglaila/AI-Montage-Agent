@@ -30,9 +30,10 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 
-def _run_pipeline_task(task_id: str, video_paths: list, bgm_path: str, style: str, output_name: str):
+def _run_pipeline_task(task_id: str, video_paths: list, bgm_path: str, style: str, output_name: str, color_preset: str = None, stabilize: bool = False):
     """后台运行 pipeline"""
     import sys
+    import traceback
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
     from pipeline import MontagePipeline
 
@@ -42,8 +43,42 @@ def _run_pipeline_task(task_id: str, video_paths: list, bgm_path: str, style: st
         task["progress"] = 10
         task["message"] = "正在检测镜头..."
 
+        if not video_paths:
+            task["status"] = "error"
+            task["message"] = "没有可用的视频文件，请检查搜索关键词"
+            return
+
+        task["progress"] = 20
+        task["message"] = f"正在处理 {len(video_paths)} 个视频..."
+
         pipeline = MontagePipeline(cache_dir="cache", output_dir="output")
         result = pipeline.run(video_paths, bgm_path, style, output_name, threshold=0.2)
+
+        # 应用颜色分级（如果指定了预设）
+        if color_preset and color_preset != "none":
+            task["progress"] = 85
+            task["message"] = f"正在应用颜色分级: {color_preset}..."
+            try:
+                from packages.video_enhancement.src.color_grading import apply_color_grade
+                temp_path = result + ".graded.mp4"
+                apply_color_grade(result, temp_path, preset=color_preset)
+                import os
+                os.replace(temp_path, result)
+            except Exception as e:
+                print(f"[Color Grading] 跳过: {e}")
+
+        # 应用防抖（如果启用了）
+        if stabilize:
+            task["progress"] = 90
+            task["message"] = "正在应用视频防抖..."
+            try:
+                from packages.video_enhancement.src.stabilizer import stabilize_video
+                temp_path = result + ".stab.mp4"
+                stabilize_video(result, temp_path)
+                import os
+                os.replace(temp_path, result)
+            except Exception as e:
+                print(f"[Stabilize] 跳过: {e}")
 
         task["status"] = "done"
         task["progress"] = 100
@@ -52,12 +87,21 @@ def _run_pipeline_task(task_id: str, video_paths: list, bgm_path: str, style: st
     except Exception as e:
         task["status"] = "error"
         task["message"] = str(e)
+        print(f"[Pipeline Error] task={task_id}")
+        traceback.print_exc()
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
     html_path = Path(__file__).parent / "index.html"
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+
+@app.get("/api/styles")
+async def list_styles():
+    """获取可用风格模板列表"""
+    from packages.video_enhancement.src.style_templates import get_style_names
+    return get_style_names()
 
 
 @app.post("/api/upload/video")
@@ -85,11 +129,13 @@ async def upload_bgm(file: UploadFile = File(...)):
 async def create_montage(
     background_tasks: BackgroundTasks,
     video_paths: str = Form(...),        # JSON 数组字符串
-    bgm_path: str = Form(...),
+    bgm_path: Optional[str] = Form(None),
+    bgm_query: Optional[str] = Form(None),
     style: str = Form("dynamic"),
+    style_preset: Optional[str] = Form(None),
     output_name: str = Form("final.mp4"),
     query: Optional[str] = Form(None),
-    source: str = Form("bilibili"),
+    source: str = Form("playphrase"),
     clip_limit: int = Form(20),
 ):
     """创建混剪任务"""
@@ -102,17 +148,51 @@ async def create_montage(
         "output_path": None,
     }
 
-    # 如果是搜索模式，先下载视频
+    # BGM：搜索下载或使用上传的文件
+    if bgm_query:
+        from packages.video_crawler.src.bgm_crawler import BgmCrawler
+        bgm_crawler = BgmCrawler()
+        bgm_paths = bgm_crawler.search_and_download(bgm_query, max_clips=1)
+        if not bgm_paths:
+            _tasks[task_id]["status"] = "error"
+            _tasks[task_id]["message"] = f"未找到 BGM: {bgm_query}"
+            return {"task_id": task_id}
+        bgm_path = bgm_paths[0]
+    elif not bgm_path:
+        _tasks[task_id]["status"] = "error"
+        _tasks[task_id]["message"] = "请提供 BGM 文件或搜索关键词"
+        return {"task_id": task_id}
+
+    # 视频来源：搜索下载或使用上传的文件
     if query:
+        from packages.video_crawler.src.quote_crawler import create_quote_crawler
         from packages.video_crawler.src.bilibili_crawler import BilibiliCrawler
-        crawler = BilibiliCrawler()
-        video_paths_list = crawler.search_and_download(query, max_clips=clip_limit)
+        try:
+            if source in ("playphrase", "quodb"):
+                crawler = create_quote_crawler(source)
+            elif source == "bilibili":
+                crawler = BilibiliCrawler()
+            else:
+                crawler = BilibiliCrawler()
+            video_paths_list = crawler.search_and_download(query, max_clips=clip_limit)
+        except Exception:
+            video_paths_list = []
     else:
         video_paths_list = json.loads(video_paths)
 
+    # 风格预设处理
+    color_preset = None
+    stabilize = False
+    if style_preset:
+        from packages.video_enhancement.src.style_templates import get_pipeline_params
+        preset_params = get_pipeline_params(style_preset)
+        style = preset_params.get("style", style)
+        color_preset = preset_params.get("color_preset")
+        stabilize = preset_params.get("stabilize", False)
+
     # 后台运行 pipeline
     background_tasks.add_task(
-        _run_pipeline_task, task_id, video_paths_list, bgm_path, style, output_name
+        _run_pipeline_task, task_id, video_paths_list, bgm_path, style, output_name, color_preset, stabilize
     )
 
     return {"task_id": task_id}

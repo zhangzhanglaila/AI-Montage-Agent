@@ -102,6 +102,12 @@ class TransitionEngine:
             return self._build_flash_filter(transition)
         elif transition.type == TransitionType.MOTION_BLUR:
             return self._build_motion_blur_filter(transition)
+        elif transition.type == TransitionType.ZOOM:
+            return self._build_zoom_filter(transition)
+        elif transition.type == TransitionType.SHAKE:
+            return self._build_shake_filter(transition)
+        elif transition.type == TransitionType.DIRECTIONAL_WIPE:
+            return self._build_directional_wipe_filter(transition)
         else:
             return self._build_cut_filter(transition)
 
@@ -174,6 +180,47 @@ class TransitionEngine:
     def _build_cut_filter(self, transition: Transition) -> str:
         """构建硬切滤镜"""
         return "[0:v][1:v]concat=n=2:v=1[out]"
+
+    def _build_zoom_filter(self, transition: Transition) -> str:
+        """构建缩放转场滤镜（zoom in/out）"""
+        duration = transition.duration
+        return (
+            f"[0:v]zoompan=z='min(zoom+0.015,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080[v0];"
+            f"[1:v]zoompan=z='if(eq(on,1),1.5,max(1.001,zoom-0.015))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080[v1];"
+            f"[v0][v1]concat=n=2:v=1[out]"
+        )
+
+    def _build_shake_filter(self, transition: Transition) -> str:
+        """构建抖动转场滤镜（画面抖动后切换）"""
+        duration = transition.duration
+        intensity = transition.intensity
+        return (
+            f"[0:v]crop=in_w-{int(20*intensity)}:in_h-{int(20*intensity)}:"
+            f"x='if(eq(mod(n,4),0),10,if(eq(mod(n,4),1),5,if(eq(mod(n,4),2),15,0)))':"
+            f"y='if(eq(mod(n,4),0),5,if(eq(mod(n,4),1),10,if(eq(mod(n,4),2),0,15)))'[v0];"
+            f"[v0]scale=1920:1080[v0s];"
+            f"[v0s][1:v]concat=n=2:v=1[out]"
+        )
+
+    def _build_directional_wipe_filter(self, transition: Transition) -> str:
+        """构建方向擦除滤镜"""
+        duration = transition.duration
+        direction = transition.direction
+
+        if direction == "right":
+            xfade_type = "wipeleft"
+        elif direction == "left":
+            xfade_type = "wiperight"
+        elif direction == "up":
+            xfade_type = "wipedown"
+        elif direction == "down":
+            xfade_type = "wipeup"
+        else:
+            xfade_type = "wipeleft"
+
+        return (
+            f"[0:v][1:v]xfade=transition={xfade_type}:duration={duration}:offset=0[out]"
+        )
 
     def apply_multiple_transitions(
         self,

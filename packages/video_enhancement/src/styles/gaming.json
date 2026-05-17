@@ -1,0 +1,12 @@
+{
+  "id": "gaming",
+  "name": "Gaming Montage",
+  "description": "Fast-paced action cuts for gaming highlight reels",
+  "params": {
+    "style": {"name": "gaming", "mood": "intense"},
+    "pacing": {"speed": "fast", "climax_intensity": 0.95},
+    "transitions": {"type": "mixed", "crossfade_duration": 0.1},
+    "effects": {"color_grading": "high_contrast", "stabilization": false, "sharpness": true, "speed_ramps": true},
+    "energy_mapping": {"sync_to_beats": true, "amplification": 1.5}
+  }
+}

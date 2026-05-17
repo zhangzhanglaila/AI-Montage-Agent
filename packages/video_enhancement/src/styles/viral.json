@@ -1,0 +1,12 @@
+{
+  "id": "viral",
+  "name": "Viral Short",
+  "description": "Punchy cuts optimized for short-form viral content",
+  "params": {
+    "style": {"name": "viral", "mood": "punchy"},
+    "pacing": {"speed": "very_fast", "climax_intensity": 1.0},
+    "transitions": {"type": "flash", "crossfade_duration": 0.05},
+    "effects": {"color_grading": "vibrant", "stabilization": false, "sharpness": true},
+    "energy_mapping": {"sync_to_beats": true, "amplification": 2.0}
+  }
+}

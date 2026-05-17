@@ -1,0 +1,12 @@
+{
+  "id": "vlog",
+  "name": "Vlog",
+  "description": "Personal, face-centric storytelling style",
+  "params": {
+    "style": {"name": "vlog", "mood": "energetic"},
+    "pacing": {"speed": "medium", "climax_intensity": 0.6},
+    "transitions": {"type": "cut", "crossfade_duration": 0.0},
+    "effects": {"color_grading": "vibrant", "stabilization": true, "sharpness": false},
+    "energy_mapping": {"sync_to_beats": true, "amplification": 1.0}
+  }
+}

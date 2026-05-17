@@ -1,0 +1,12 @@
+{
+  "id": "wedding",
+  "name": "Wedding Film",
+  "description": "Romantic, cinematic style for wedding highlight films",
+  "params": {
+    "style": {"name": "wedding", "mood": "romantic"},
+    "pacing": {"speed": "slow", "climax_intensity": 0.7},
+    "transitions": {"type": "crossfade", "crossfade_duration": 1.0},
+    "effects": {"color_grading": "filmic_warm", "stabilization": true, "sharpness": false, "film_grain": 0.1},
+    "energy_mapping": {"sync_to_beats": true, "amplification": 0.6}
+  }
+}

@@ -33,7 +33,11 @@
       "Bash(git ls-files *)",
       "Bash(git status *)",
       "Bash(git rm *)",
-      "Bash(taskkill //F //IM python.exe)"
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(pip search *)",
+      "Bash(yt-dlp --js-runtimes node -x --audio-format mp3 --audio-quality 0 -o \"cache/bgm/test_%\\(id\\)s.%\\(ext\\)s\" --no-playlist \"ytsearch1:epic cinematic BGM no copyright\")",
+      "Bash(yt-dlp --js-runtimes node -x --audio-format mp3 --audio-quality 0 -o \"cache/bgm/test_bili.%\\(ext\\)s\" --no-playlist \"https://www.bilibili.com/video/BV1Wc5e6rEH8\")",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }

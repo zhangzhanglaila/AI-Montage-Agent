@@ -230,6 +230,7 @@
         .source-table tr:last-child td { border-bottom: none; }
         .source-table tr:hover td { background: #ffe4ec; }
         .source-table tr.disabled td { opacity: 0.45; }
+        .source-table tbody tr { cursor: pointer; }
 
         .source-table input[type="checkbox"] {
             width: 18px; height: 18px;
@@ -376,9 +377,46 @@
             transform: rotate(6deg);
             z-index: 2;
         }
+
+        /* ===== 震动提示动画 ===== */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 50%, 90% { transform: translateX(-4px); }
+            30%, 70% { transform: translateX(4px); }
+        }
+        .shake {
+            animation: shake 0.4s ease;
+            border-color: #FB7299 !important;
+            box-shadow: 0 0 0 2px rgba(251, 114, 153, 0.3) !important;
+        }
+
+        /* 漫画风提示气泡 */
+        .toast {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-80px);
+            background: #FB7299;
+            color: #fff;
+            font-weight: 900;
+            font-size: 0.95em;
+            padding: 10px 24px;
+            border: 3px solid #000;
+            box-shadow: 4px 4px 0 #000;
+            z-index: 9999;
+            opacity: 0;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
     </style>
 </head>
 <body>
+    <div class="toast" id="toast"></div>
     <div class="container">
         <!-- 标题 -->
         <div class="header">
@@ -391,8 +429,8 @@
             <h2><span class="num">1</span> 素材来源</h2>
 
             <div class="tab-group">
-                <div class="tab active" onclick="switchSource('search')">关键词搜索</div>
-                <div class="tab" onclick="switchSource('upload')">本地上传</div>
+                <div class="tab active" onclick="switchSource('search', this)">关键词搜索</div>
+                <div class="tab" onclick="switchSource('upload', this)">本地上传</div>
             </div>
 
             <!-- 本地上传 -->
@@ -445,31 +483,42 @@
         <!-- 2. BGM -->
         <div class="card">
             <h2><span class="num">2</span> 背景音乐</h2>
-            <div class="file-upload">
-                <label for="bgm-file">选择 BGM 文件</label>
-                <input type="file" id="bgm-file" accept="audio/*" onchange="updateFileNames(this, 'bgm-name')">
-                <span class="file-name" id="bgm-name">未选择文件</span>
+            <div class="tab-group">
+                <div class="tab active" onclick="switchBgm('search', this)">搜索 BGM</div>
+                <div class="tab" onclick="switchBgm('upload', this)">本地上传</div>
+            </div>
+            <div id="bgm-search-section">
+                <div class="form-group">
+                    <label>搜索关键词</label>
+                    <input type="text" id="bgm-query" placeholder="如：epic cinematic / 古风纯音乐 / 漫威 BGM">
+                </div>
+            </div>
+            <div id="bgm-upload-section" class="hidden">
+                <div class="file-upload">
+                    <label for="bgm-file">选择 BGM 文件</label>
+                    <input type="file" id="bgm-file" accept="audio/*" onchange="updateFileNames(this, 'bgm-name')">
+                    <span class="file-name" id="bgm-name">未选择文件</span>
+                </div>
             </div>
         </div>
 
         <!-- 3. 风格 -->
         <div class="card" style="position:relative">
             <h2><span class="num">3</span> 风格设置</h2>
-            <div class="style-grid">
-                <div class="style-option active" onclick="selectStyle(this, 'dynamic')">
-                    <span class="style-icon">&#9889;</span>
-                    动感快切
-                </div>
-                <div class="style-option" onclick="selectStyle(this, 'calm')">
-                    <span class="style-icon">&#127808;</span>
-                    舒缓流畅
-                </div>
-                <div class="style-option" onclick="selectStyle(this, 'intense')">
-                    <span class="style-icon">&#128293;</span>
-                    激烈高燃
-                </div>
+            <div class="form-group">
+                <label>风格预设</label>
+                <select id="style-preset" onchange="onStylePresetChange()" style="
+                    width:100%; padding:10px 14px; background:#fff; border:2px solid #000;
+                    border-radius:4px; font-size:0.95em; font-family:inherit; cursor:pointer;
+                    appearance:none; background-image:url('data:image/svg+xml;utf8,<svg fill=\"%23FB7299\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>');
+                    background-repeat:no-repeat; background-position:right 10px center; background-size:20px;
+                ">
+                    <option value="">加载中...</option>
+                </select>
             </div>
+            <p id="style-desc" style="font-size:0.85em; color:#666; margin-top:8px; min-height:1.2em;"></p>
             <input type="hidden" id="style-value" value="dynamic">
+            <input type="hidden" id="style-preset-value" value="">
         </div>
 
         <!-- 提交 -->
@@ -518,8 +567,8 @@
             tbody.innerHTML = sources.map((s, i) => {
                 const badge = badgeMap[s.status];
                 const disabled = s.status === "unavailable" ? ' class="disabled"' : "";
-                return `<tr${disabled}>
-                    <td><input type="checkbox" data-index="${i}" ${s.checked ? "checked" : ""} ${s.status === "unavailable" ? "disabled" : ""} onchange="onSourceCheck()"></td>
+                return `<tr${disabled} onclick="toggleSource(${i}, this)">
+                    <td><input type="checkbox" data-index="${i}" ${s.checked ? "checked" : ""} ${s.status === "unavailable" ? "disabled" : ""} onclick="event.stopPropagation()"></td>
                     <td class="source-name">${s.name}</td>
                     <td><span class="type-tag">${s.type}</span></td>
                     <td>${s.desc}</td>
@@ -532,6 +581,14 @@
         function onSourceCheck() {
             const checks = document.querySelectorAll(".source-table input[type=checkbox]");
             checks.forEach((cb, i) => { sources[i].checked = cb.checked; });
+            updateSelectedCount();
+        }
+
+        function toggleSource(index, row) {
+            if (sources[index].status === "unavailable") return;
+            sources[index].checked = !sources[index].checked;
+            const cb = row.querySelector("input[type=checkbox]");
+            cb.checked = sources[index].checked;
             updateSelectedCount();
         }
 
@@ -554,13 +611,39 @@
 
         // ===== Tab 切换 =====
         let sourceMode = "search";
+        let bgmMode = "search";
 
-        function switchSource(mode) {
+        function switchSource(mode, el) {
             sourceMode = mode;
-            document.querySelectorAll(".tab-group .tab").forEach(t => t.classList.remove("active"));
-            event.target.classList.add("active");
+            el.parentElement.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+            el.classList.add("active");
             document.getElementById("upload-section").classList.toggle("hidden", mode !== "upload");
             document.getElementById("search-section").classList.toggle("hidden", mode !== "search");
+        }
+
+        function switchBgm(mode, el) {
+            bgmMode = mode;
+            el.parentElement.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+            el.classList.add("active");
+            document.getElementById("bgm-upload-section").classList.toggle("hidden", mode !== "upload");
+            document.getElementById("bgm-search-section").classList.toggle("hidden", mode !== "search");
+        }
+
+        // ===== 震动提示 =====
+        function shake(el) {
+            if (!el) return;
+            el.classList.remove("shake");
+            void el.offsetWidth; // 触发 reflow 重启动画
+            el.classList.add("shake");
+            setTimeout(() => el.classList.remove("shake"), 500);
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById("toast");
+            t.textContent = msg;
+            t.classList.add("show");
+            clearTimeout(t._timer);
+            t._timer = setTimeout(() => t.classList.remove("show"), 2200);
         }
 
         // ===== 文件上传 =====
@@ -572,10 +655,52 @@
         }
 
         // ===== 风格选择 =====
-        function selectStyle(el, style) {
-            document.querySelectorAll(".style-option").forEach(o => o.classList.remove("active"));
-            el.classList.add("active");
-            document.getElementById("style-value").value = style;
+        let _stylePresets = [];
+
+        async function loadStylePresets() {
+            try {
+                const resp = await fetch("/api/styles");
+                _stylePresets = await resp.json();
+                const sel = document.getElementById("style-preset");
+                sel.innerHTML = '<option value="">自定义 (基础风格)</option>' +
+                    _stylePresets.map(s =>
+                        `<option value="${s.id}">${s.name} - ${s.description}</option>`
+                    ).join("");
+                // 默认选中 action
+                sel.value = "action";
+                onStylePresetChange();
+            } catch (e) {
+                document.getElementById("style-preset").innerHTML =
+                    '<option value="dynamic">动感快切</option>' +
+                    '<option value="calm">舒缓流畅</option>' +
+                    '<option value="intense">激烈高燃</option>';
+            }
+        }
+
+        function onStylePresetChange() {
+            const sel = document.getElementById("style-preset");
+            const presetId = sel.value;
+            document.getElementById("style-preset-value").value = presetId;
+
+            if (!presetId) {
+                document.getElementById("style-value").value = "dynamic";
+                document.getElementById("style-desc").textContent = "使用基础风格：动感快切";
+                return;
+            }
+
+            const preset = _stylePresets.find(s => s.id === presetId);
+            if (preset) {
+                document.getElementById("style-desc").textContent = preset.description;
+            }
+
+            // 映射到基础风格
+            const styleMap = {
+                action: "intense", gaming: "intense", mtv: "intense",
+                sport: "intense", viral: "intense",
+                vlog: "dynamic", cinematic: "dynamic",
+                documentary: "calm", wedding: "calm", travel: "calm", lofi: "calm",
+            };
+            document.getElementById("style-value").value = styleMap[presetId] || "dynamic";
         }
 
         // ===== 上传 & 提交 =====
@@ -603,29 +728,63 @@
             try {
                 let videoPaths, bgmPath;
 
-                const bgmFile = document.getElementById("bgm-file").files[0];
-                if (!bgmFile) { alert("请选择 BGM 文件"); return; }
-                bgmPath = await uploadBgm(bgmFile);
+                // BGM
+                if (bgmMode === "upload") {
+                    const bgmFile = document.getElementById("bgm-file").files[0];
+                    if (!bgmFile) {
+                        shake(document.getElementById("bgm-upload-section"));
+                        showToast("请选择 BGM 文件");
+                        btn.disabled = false; btn.textContent = "开始混剪"; return;
+                    }
+                    bgmPath = await uploadBgm(bgmFile);
+                }
 
+                // 视频来源
                 if (sourceMode === "upload") {
                     const videoFiles = document.getElementById("video-files").files;
-                    if (videoFiles.length === 0) { alert("请选择视频文件"); return; }
+                    if (videoFiles.length === 0) {
+                        shake(document.getElementById("upload-section"));
+                        showToast("请选择视频文件");
+                        btn.disabled = false; btn.textContent = "开始混剪"; return;
+                    }
                     videoPaths = await uploadFiles(videoFiles);
                 }
 
                 const style = document.getElementById("style-value").value;
+                const stylePreset = document.getElementById("style-preset-value").value;
                 const selectedSources = getSelectedSources();
 
                 const formData = new FormData();
                 formData.append("video_paths", JSON.stringify(videoPaths || []));
-                formData.append("bgm_path", bgmPath);
                 formData.append("style", style);
+                if (stylePreset) formData.append("style_preset", stylePreset);
+
+                // BGM：上传文件或搜索关键词
+                if (bgmMode === "upload") {
+                    formData.append("bgm_path", bgmPath);
+                } else {
+                    const bgmQuery = document.getElementById("bgm-query");
+                    if (!bgmQuery.value.trim()) {
+                        shake(bgmQuery);
+                        showToast("请输入 BGM 搜索关键词");
+                        btn.disabled = false; btn.textContent = "开始混剪"; return;
+                    }
+                    formData.append("bgm_query", bgmQuery.value);
+                }
 
                 if (sourceMode === "search") {
-                    const query = document.getElementById("search-query").value;
-                    if (!query) { alert("请输入搜索关键词"); return; }
-                    if (selectedSources.length === 0) { alert("请至少选择一个素材来源"); return; }
-                    formData.append("query", query);
+                    const query = document.getElementById("search-query");
+                    if (!query.value.trim()) {
+                        shake(query);
+                        showToast("请输入搜索关键词");
+                        btn.disabled = false; btn.textContent = "开始混剪"; return;
+                    }
+                    if (selectedSources.length === 0) {
+                        shake(document.querySelector(".source-toggle"));
+                        showToast("请至少选择一个素材来源");
+                        btn.disabled = false; btn.textContent = "开始混剪"; return;
+                    }
+                    formData.append("query", query.value);
                     formData.append("source", selectedSources[0]);
                     formData.append("clip_limit", document.getElementById("clip-limit").value);
                 }
@@ -637,7 +796,7 @@
                 listenProgress(data.task_id);
 
             } catch (e) {
-                alert("错误: " + e.message);
+                showToast("出错了: " + e.message);
                 btn.disabled = false;
                 btn.textContent = "开始混剪";
             }
@@ -658,7 +817,7 @@
                     document.getElementById("submit-btn").textContent = "开始混剪";
                 } else if (data.status === "error") {
                     evtSource.close();
-                    alert("混剪失败: " + data.message);
+                    showToast("混剪失败: " + data.message);
                     document.getElementById("submit-btn").disabled = false;
                     document.getElementById("submit-btn").textContent = "开始混剪";
                 }
@@ -668,6 +827,7 @@
 
         // 初始化
         renderSourceTable();
+        loadStylePresets();
     </script>
 </body>
 </html>

@@ -33,8 +33,20 @@ class ShotDetector:
         """检测镜头并切割"""
         print(f"  检测镜头: {video_path}")
 
+        if not Path(video_path).exists():
+            print(f"  文件不存在: {video_path}")
+            return []
+
         # 获取视频时长
-        duration = self._get_duration(video_path)
+        try:
+            duration = self._get_duration(video_path)
+        except Exception as e:
+            print(f"  获取时长失败: {e}")
+            return []
+
+        if duration <= 0:
+            print(f"  视频时长为0: {video_path}")
+            return []
 
         # 使用 FFmpeg 检测场景变化
         scenes = self._detect_scenes(video_path, threshold)
@@ -46,9 +58,11 @@ class ShotDetector:
         # 切割视频
         shots = []
         for i, (start, end) in enumerate(scenes):
+            if end - start < 0.1:
+                continue
+
             shot_path = self.cache_dir / f"shot_{i:04d}.mp4"
 
-            # 切割视频（stream copy，不重新编码，速度极快）
             cmd = [
                 "ffmpeg", "-y",
                 "-ss", str(start),
@@ -58,7 +72,14 @@ class ShotDetector:
                 "-avoid_negative_ts", "make_zero",
                 str(shot_path)
             ]
-            subprocess.run(cmd, capture_output=True, check=True)
+            try:
+                result = subprocess.run(cmd, capture_output=True, timeout=30)
+                if result.returncode != 0 or not shot_path.exists():
+                    print(f"  镜头切割失败: shot_{i:04d}")
+                    continue
+            except subprocess.TimeoutExpired:
+                print(f"  镜头切割超时: shot_{i:04d}")
+                continue
 
             shots.append(Shot(
                 shot_id=i,
@@ -66,6 +87,17 @@ class ShotDetector:
                 end_time=end,
                 duration=end - start,
                 file_path=str(shot_path)
+            ))
+
+        # 如果切割全部失败，直接复制原视频作为单镜头
+        if not shots and duration > 0:
+            print(f"  切割失败，使用原视频作为单镜头")
+            shots.append(Shot(
+                shot_id=0,
+                start_time=0.0,
+                end_time=duration,
+                duration=duration,
+                file_path=video_path
             ))
 
         print(f"  检测到 {len(shots)} 个镜头")
@@ -187,7 +219,7 @@ class BeatAnalyzer:
             y, sr = librosa.load(audio_path, sr=22050)
             duration = len(y) / sr
 
-            # 检测节拍
+            # 检测节拍 + onset 强度
             tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
             beat_times = librosa.frames_to_time(beat_frames, sr=sr)
 
@@ -197,10 +229,24 @@ class BeatAnalyzer:
                 beat_interval = 0.5  # 120 BPM
                 beat_times = np.arange(0, duration, beat_interval)
 
+            # 计算 onset 强度（用于区分强拍/弱拍）
+            onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+            onset_times = librosa.frames_to_time(np.arange(len(onset_env)), sr=sr)
+
             # 计算能量
             rms = librosa.feature.rms(y=y)[0]
             rms_times = librosa.frames_to_time(np.arange(len(rms)), sr=sr)
             rms_normalized = (rms - rms.min()) / (rms.max() - rms.min() + 1e-8)
+
+            # 为每个节拍分类强/弱拍
+            # 强拍：onset 强度高于中位数 + 能量高于中位数
+            onset_at_beats = []
+            for bt in beat_times:
+                idx = np.argmin(np.abs(onset_times - bt))
+                onset_at_beats.append(onset_env[idx])
+
+            onset_median = np.median(onset_at_beats) if onset_at_beats else 0
+            energy_median = np.median(rms_normalized)
 
             # 找高潮段
             threshold = np.percentile(rms_normalized, 80)
@@ -223,11 +269,26 @@ class BeatAnalyzer:
                 for t, e in zip(rms_times[::100], rms_normalized[::100])
             ]
 
-            # 创建节拍对象
-            beats = [
-                Beat(time=float(t), strength=0.8, beat_type="normal")
-                for t in beat_times
-            ]
+            # 创建节拍对象（区分强拍/弱拍）
+            beats = []
+            for i, t in enumerate(beat_times):
+                onset_val = onset_at_beats[i] if i < len(onset_at_beats) else 0
+
+                # 获取该时刻的能量
+                e_idx = np.argmin(np.abs(rms_times - t))
+                energy_val = rms_normalized[e_idx]
+
+                # 分类：onset 强度高 + 能量高 = 强拍
+                is_strong = (onset_val > onset_median * 1.2) or (energy_val > energy_median * 1.3)
+
+                beat_type = "strong" if is_strong else "normal"
+                strength = min(float(onset_val / (onset_median + 1e-8)), 2.0) / 2.0
+
+                beats.append(Beat(
+                    time=float(t),
+                    strength=strength,
+                    beat_type=beat_type,
+                ))
 
             return BeatAnalysis(
                 beats=beats,
@@ -260,31 +321,108 @@ class BeatAnalyzer:
 
 
 class HighlightScorer:
-    """高光评分"""
+    """高光评分 - 5 维评分系统
+
+    维度：运动幅度(0.25)、镜头多样性(0.20)、人脸情感(0.25)、镜头运动(0.15)、音频(0.15)
+    """
+
+    def __init__(self):
+        self.weights = {
+            "motion": 0.25,
+            "shot_diversity": 0.20,
+            "face_emotion": 0.25,
+            "camera_movement": 0.15,
+            "audio": 0.15,
+        }
 
     def score(self, shot: Shot, motion: MotionData) -> float:
-        """计算高光分数"""
-        # 运动幅度权重
-        motion_weight = 0.6
-        # 镜头时长权重（太短或太长都不好）
-        duration_weight = 0.4
+        """计算高光分数（5 维）"""
+        w = self.weights
 
-        # 运动分数
-        motion_score = min(motion.magnitude / 5.0, 1.0)
+        # 1. 运动幅度（sigmoid 归一化）
+        motion_score = self._sigmoid(motion.magnitude, center=3.0, scale=1.0)
 
-        # 时长分数（1-3秒最佳）
-        if 1.0 <= shot.duration <= 3.0:
-            duration_score = 1.0
-        elif shot.duration < 1.0:
-            duration_score = shot.duration
+        # 2. 镜头时长多样性（1-3 秒最佳）
+        duration_score = self._duration_score(shot.duration)
+
+        # 3. 人脸情感（如果有 action 信息）
+        face_score = self._face_emotion_score(shot)
+
+        # 4. 镜头运动（shake + zoom）
+        camera_score = self._camera_movement_score(motion)
+
+        # 5. 音频能量（如果可用）
+        audio_score = self._audio_score(shot)
+
+        total = (
+            w["motion"] * motion_score +
+            w["shot_diversity"] * duration_score +
+            w["face_emotion"] * face_score +
+            w["camera_movement"] * camera_score +
+            w["audio"] * audio_score
+        )
+
+        return min(max(total, 0.0), 1.0)
+
+    def _sigmoid(self, x: float, center: float = 3.0, scale: float = 1.0) -> float:
+        """Sigmoid 归一化"""
+        import math
+        return 1.0 / (1.0 + math.exp(-scale * (x - center)))
+
+    def _duration_score(self, duration: float) -> float:
+        """时长分数（1-3 秒最佳）"""
+        if 1.0 <= duration <= 3.0:
+            return 1.0
+        elif duration < 1.0:
+            return duration
         else:
-            duration_score = max(0.5, 1.0 - (shot.duration - 3.0) * 0.1)
+            return max(0.3, 1.0 - (duration - 3.0) * 0.1)
 
-        return motion_weight * motion_score + duration_weight * duration_score
+    def _face_emotion_score(self, shot: Shot) -> float:
+        """人脸情感分数（基于 action 信息）"""
+        if not shot.actions:
+            return 0.5  # 默认中性
+
+        # 情感权重映射
+        emotion_weights = {
+            "angry": 0.9, "fear": 0.8, "surprise": 0.7,
+            "sad": 0.6, "happy": 0.5, "disgust": 0.4, "neutral": 0.1,
+        }
+
+        # 从 actions 中提取情感
+        for action in shot.actions:
+            action_lower = action.lower() if isinstance(action, str) else ""
+            for emotion, weight in emotion_weights.items():
+                if emotion in action_lower:
+                    return weight
+
+        return 0.3  # 无情感信息
+
+    def _camera_movement_score(self, motion: MotionData) -> float:
+        """镜头运动分数（shake + zoom 复合）"""
+        shake_score = min(motion.shake / 3.0, 1.0) * 0.4
+        zoom_score = min(abs(motion.zoom - 1.0) / 0.5, 1.0) * 0.3
+        direction_score = min(
+            (abs(motion.direction_x) + abs(motion.direction_y)) / 5.0, 1.0
+        ) * 0.3
+        return shake_score + zoom_score + direction_score
+
+    def _audio_score(self, shot: Shot) -> float:
+        """音频能量分数"""
+        # 如果 shot 有额外的音频信息，使用它
+        # 否则基于时长估算
+        if shot.duration < 0.5:
+            return 0.2
+        elif shot.duration > 10:
+            return 0.4
+        return 0.6
 
 
 class BeatSyncEngine:
-    """卡点同步引擎"""
+    """卡点同步引擎 - 支持强弱拍分类 + 转场效果"""
+
+    # 转场类型映射
+    TRANSITION_TYPES = ["cut", "fade", "dissolve", "wipe", "flash", "zoom", "blur"]
 
     def sync(
         self,
@@ -292,7 +430,7 @@ class BeatSyncEngine:
         beats: List[Beat],
         style: str = "dynamic"
     ) -> List[TimelineEntry]:
-        """将镜头与节拍同步"""
+        """将镜头与节拍同步（支持强弱拍分类）"""
         if not shots or not beats:
             return []
 
@@ -312,20 +450,28 @@ class BeatSyncEngine:
             # 获取当前节拍
             beat = beats[beat_idx]
 
-            # 根据高光分数决定时长
+            # 根据高光分数 + 拍类型决定时长和速度
             if shot.highlight_score > 0.7:
-                # 高光镜头，短而快
                 duration = params["fast"]
             elif shot.highlight_score > 0.4:
-                # 中等镜头
                 duration = params["medium"]
             else:
-                # 普通镜头
                 duration = params["slow"]
+
+            # 强拍：慢动作（强调高光镜头）；弱拍：快速（紧凑节奏）
+            speed_factor = 1.0
+            if beat.beat_type == "strong":
+                speed_factor = params.get("slow_speed", 0.5) if shot.highlight_score > 0.6 else 0.7
+            else:
+                speed_factor = params.get("fast_speed", 1.5)
 
             # 量化到节拍
             beat_interval = beats[1].time - beats[0].time if len(beats) > 1 else 0.5
             duration = round(duration / beat_interval) * beat_interval
+
+            # 选择转场类型
+            transition_type = self._pick_transition(beat, shot, style)
+            transition_duration = 0.5 if transition_type != "cut" else 0.0
 
             # 创建时间线条目
             entry = TimelineEntry(
@@ -335,9 +481,9 @@ class BeatSyncEngine:
                 end_time=beat.time + duration,
                 duration=duration,
                 beat_time=beat.time,
-                speed_factor=1.0,
-                transition_type="cut",
-                transition_duration=0.0
+                speed_factor=speed_factor,
+                transition_type=transition_type,
+                transition_duration=transition_duration
             )
 
             timeline.append(entry)
@@ -354,11 +500,32 @@ class BeatSyncEngine:
     def _get_style_params(self, style: str) -> Dict[str, float]:
         """获取风格参数"""
         params = {
-            "dynamic": {"fast": 0.3, "medium": 0.5, "slow": 1.0},
-            "calm": {"fast": 0.5, "medium": 1.0, "slow": 2.0},
-            "intense": {"fast": 0.2, "medium": 0.3, "slow": 0.5},
+            "dynamic": {"fast": 0.3, "medium": 0.5, "slow": 1.0, "slow_speed": 0.5, "fast_speed": 1.5},
+            "calm": {"fast": 0.5, "medium": 1.0, "slow": 2.0, "slow_speed": 0.7, "fast_speed": 1.2},
+            "intense": {"fast": 0.2, "medium": 0.3, "slow": 0.5, "slow_speed": 0.3, "fast_speed": 2.0},
         }
         return params.get(style, params["dynamic"])
+
+    def _pick_transition(self, beat: Beat, shot: Shot, style: str) -> str:
+        """根据拍类型和风格选择转场效果"""
+        import random
+
+        # 强拍用更有冲击力的转场
+        if beat.beat_type == "strong":
+            if style == "intense":
+                return random.choice(["flash", "zoom", "cut"])
+            elif style == "calm":
+                return random.choice(["fade", "dissolve"])
+            else:
+                return random.choice(["cut", "fade", "flash"])
+
+        # 弱拍用平滑转场
+        if style == "intense":
+            return "cut"
+        elif style == "calm":
+            return random.choice(["dissolve", "fade"])
+        else:
+            return random.choice(["cut", "dissolve"])
 
 
 class VideoRenderer:
@@ -374,42 +541,43 @@ class VideoRenderer:
         bgm_path: str,
         output_path: str
     ) -> str:
-        """渲染最终视频"""
+        """渲染最终视频（支持转场效果）"""
         print(f"  渲染视频...")
 
-        # 创建 concat 文件
-        concat_file = self.output_dir / "concat.txt"
+        # 收集有效的镜头（按时间排序）
+        valid_entries = [e for e in timeline if e.shot_path and Path(e.shot_path).exists()]
+        if not valid_entries:
+            raise ValueError("没有有效的镜头文件")
+
         temp_files = []
 
-        with open(concat_file, 'w') as f:
-            for entry in timeline:
-                if not entry.shot_path or not Path(entry.shot_path).exists():
-                    continue
+        # Step 1: 调整速度
+        prepared = []
+        for entry in valid_entries:
+            if entry.speed_factor != 1.0:
+                temp_path = self.output_dir / f"speed_{entry.shot_id}.mp4"
+                self._adjust_speed(entry.shot_path, str(temp_path), entry.speed_factor)
+                temp_files.append(temp_path)
+                prepared.append(str(temp_path))
+            else:
+                prepared.append(entry.shot_path)
 
-                # 使用绝对路径和正斜杠
-                shot_path = Path(entry.shot_path).resolve().as_posix()
+        # Step 2: 检查是否有非 cut 转场
+        has_transitions = any(
+            getattr(e, "transition_type", "cut") != "cut" and getattr(e, "transition_duration", 0) > 0
+            for e in valid_entries
+        )
 
-                # 调整速度
-                if entry.speed_factor != 1.0:
-                    temp_path = self.output_dir / f"speed_{entry.shot_id}.mp4"
-                    self._adjust_speed(entry.shot_path, str(temp_path), entry.speed_factor)
-                    temp_files.append(temp_path)
-                    f.write(f"file '{temp_path.resolve().as_posix()}'\n")
-                else:
-                    f.write(f"file '{shot_path}'\n")
+        if has_transitions and len(prepared) > 1:
+            # 使用 xfade 滤镜应用转场
+            concat_video = self._render_with_transitions(prepared, valid_entries)
+        else:
+            # 简单拼接（无转场或全部是 cut）
+            concat_video = self._render_concat(prepared)
 
-        # 拼接视频
-        concat_video = self.output_dir / "concat.mp4"
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat", "-safe", "0",
-            "-i", str(concat_file),
-            "-c", "copy",
-            str(concat_video)
-        ]
-        subprocess.run(cmd, capture_output=True, check=True)
+        temp_files.append(concat_video)
 
-        # 添加 BGM
+        # Step 3: 添加 BGM
         cmd = [
             "ffmpeg", "-y",
             "-i", str(concat_video),
@@ -425,12 +593,109 @@ class VideoRenderer:
 
         # 清理临时文件
         for f in temp_files:
-            f.unlink(missing_ok=True)
-        concat_file.unlink(missing_ok=True)
-        concat_video.unlink(missing_ok=True)
+            Path(f).unlink(missing_ok=True)
 
         print(f"  输出: {output_path}")
         return output_path
+
+    def _render_concat(self, video_paths: List[str]) -> str:
+        """简单拼接（无转场）"""
+        concat_file = self.output_dir / "concat.txt"
+        with open(concat_file, 'w') as f:
+            for path in video_paths:
+                f.write(f"file '{Path(path).resolve().as_posix()}'\n")
+
+        concat_video = self.output_dir / "concat.mp4"
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_file),
+            "-c", "copy",
+            str(concat_video)
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+        concat_file.unlink(missing_ok=True)
+        return str(concat_video)
+
+    def _render_with_transitions(self, video_paths: List[str], entries: List[TimelineEntry]) -> str:
+        """使用 xfade 滤镜渲染带转场的视频"""
+        # 获取每个视频的时长
+        durations = []
+        for path in video_paths:
+            dur = self._get_duration(path)
+            durations.append(dur)
+
+        # 构建 xfade 滤镜链
+        # xfade 需要累加偏移量：offset = 前面所有视频时长之和 - 转场时长之和
+        filter_parts = []
+        cumulative_offset = 0.0
+        current_label = "[0:v]"
+
+        for i in range(1, len(video_paths)):
+            entry = entries[i] if i < len(entries) else entries[-1]
+            trans_type = getattr(entry, "transition_type", "cut")
+            trans_dur = getattr(entry, "transition_duration", 0.5)
+
+            if trans_type == "cut" or trans_dur <= 0:
+                # 硬切：直接 concat
+                cumulative_offset += durations[i - 1]
+                filter_parts.append(f"{current_label}[{i}:v]concat=n=2:v=1[out{i}]")
+                current_label = f"[out{i}]"
+            else:
+                # xfade 转场
+                offset = sum(durations[:i]) - trans_dur * i
+                if offset < 0:
+                    offset = sum(durations[:i]) * 0.8
+
+                # 映射转场类型到 xfade
+                xfade_map = {
+                    "fade": "fade", "dissolve": "dissolve",
+                    "wipe": "wipeleft", "flash": "fadeblack",
+                    "zoom": "circlecrop", "blur": "fadeblack",
+                }
+                xfade_type = xfade_map.get(trans_type, "fade")
+
+                filter_parts.append(
+                    f"{current_label}[{i}:v]xfade=transition={xfade_type}:"
+                    f"duration={trans_dur}:offset={offset:.3f}[out{i}]"
+                )
+                current_label = f"[out{i}]"
+
+        filter_complex = ";".join(filter_parts)
+
+        # 构建 FFmpeg 输入和命令
+        concat_video = self.output_dir / "concat.mp4"
+        cmd = ["ffmpeg", "-y"]
+        for path in video_paths:
+            cmd.extend(["-i", path])
+        cmd.extend([
+            "-filter_complex", filter_complex,
+            "-map", current_label,
+            "-c:v", "libx264", "-crf", "23", "-preset", "medium",
+            str(concat_video)
+        ])
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            # 回退到简单拼接
+            print(f"  xfade 失败，回退到简单拼接")
+            return self._render_concat(video_paths)
+
+        return str(concat_video)
+
+    def _get_duration(self, video_path: str) -> float:
+        """获取视频时长"""
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            return float(result.stdout.strip())
+        except ValueError:
+            return 2.0
 
     def _adjust_speed(self, input_path: str, output_path: str, speed: float):
         """调整视频速度"""
@@ -466,6 +731,13 @@ class MontagePipeline:
         style: str = "dynamic",
         output_name: str = "final.mp4",
         threshold: float = 0.2,
+        color_preset: str = None,
+        enable_reframe: bool = False,
+        reframe_aspect: float = 9 / 16,
+        enable_ducking: bool = False,
+        duck_level_db: float = -12.0,
+        enable_harmonize: bool = False,
+        harmonize_strength: float = 0.5,
     ) -> str:
         """
         运行完整混剪流程
@@ -476,6 +748,13 @@ class MontagePipeline:
             style: 风格 (dynamic, calm, intense)
             output_name: 输出文件名
             threshold: 镜头检测灵敏度 (0.01~1.0，越小切得越细)
+            color_preset: 颜色分级预设 (如 cinematic, vibrant, vintage 等)
+            enable_reframe: 是否启用自动竖屏裁切
+            reframe_aspect: 竖屏裁切目标宽高比 (默认 9:16)
+            enable_ducking: 是否启用对话闪避
+            duck_level_db: 闪避降低分贝数 (默认 -12dB)
+            enable_harmonize: 是否启用色彩协调
+            harmonize_strength: 色彩协调强度 (0.0~1.0)
 
         Returns:
             输出文件路径
@@ -485,33 +764,37 @@ class MontagePipeline:
         print("=" * 50)
 
         # Step 1: 检测镜头
-        print(f"\n[1/5] 检测镜头 (阈值: {threshold})...")
+        print(f"\n[1/6] 检测镜头 (阈值: {threshold})...")
+        if not video_paths:
+            raise ValueError("没有可用的视频文件，请检查搜索关键词或上传文件")
+
         all_shots = []
         for video_path in video_paths:
+            print(f"  处理视频: {Path(video_path).name}")
             shots = self.shot_detector.detect(video_path, threshold=threshold)
             all_shots.extend(shots)
 
         if not all_shots:
-            raise ValueError("没有检测到任何镜头")
+            raise ValueError("没有检测到任何镜头，视频文件可能损坏或格式不支持")
 
         # Step 2: 分析运动
-        print("\n[2/5] 分析运动...")
+        print("\n[2/6] 分析运动...")
         for shot in all_shots:
             motion = self.motion_analyzer.analyze(shot.file_path)
             shot.motion_score = motion.magnitude
 
         # Step 3: 评分高光
-        print("\n[3/5] 评分高光...")
+        print("\n[3/6] 评分高光...")
         for shot in all_shots:
             motion = MotionData(magnitude=shot.motion_score)
             shot.highlight_score = self.scorer.score(shot, motion)
 
         # Step 4: 分析 BGM
-        print("\n[4/5] 分析 BGM...")
+        print("\n[4/6] 分析 BGM...")
         beat_analysis = self.beat_analyzer.analyze(bgm_path)
 
-        # Step 5: 卡点同步 + 渲染
-        print("\n[5/5] 卡点同步 + 渲染...")
+        # Step 5: 卡点同步
+        print("\n[5/6] 卡点同步...")
         timeline = self.sync_engine.sync(all_shots, beat_analysis.beats, style)
 
         if not timeline:
@@ -522,9 +805,65 @@ class MontagePipeline:
         self._last_bgm_path = bgm_path
         self._last_total_duration = sum(e.duration for e in timeline)
 
-        # 渲染输出
+        # Step 6: 渲染 + 后处理
+        print("\n[6/6] 渲染输出...")
         output_path = f"{self.output_dir}/{output_name}"
         result = self.renderer.render(timeline, bgm_path, output_path)
+
+        # 后处理：色彩协调（渲染前对镜头做，不是对最终视频做）
+        if enable_harmonize:
+            print("\n  色彩协调...")
+            try:
+                from packages.video_enhancement.src.color_harmonizer import harmonize_clips
+                shot_paths = [e.shot_path for e in timeline if e.shot_path and Path(e.shot_path).exists()]
+                if shot_paths:
+                    harmonized = [p.replace(".mp4", "_harmonized.mp4") for p in shot_paths]
+                    harmonize_clips(shot_paths, harmonized, strength=harmonize_strength)
+                    # 重新渲染
+                    for i, entry in enumerate(timeline):
+                        if entry.shot_path and i < len(harmonized) and Path(harmonized[i]).exists():
+                            entry.shot_path = harmonized[i]
+                    result = self.renderer.render(timeline, bgm_path, output_path)
+            except Exception as e:
+                print(f"  色彩协调失败（跳过）: {e}")
+
+        # 后处理：对话闪避
+        if enable_ducking:
+            print("\n  对话闪避...")
+            try:
+                from packages.video_enhancement.src.dialogue_ducking import duck_audio
+                ducked_path = output_path.replace(".mp4", "_ducked.mp4")
+                duck_audio(result, bgm_path, ducked_path, duck_level_db=duck_level_db)
+                if Path(ducked_path).exists():
+                    import os
+                    os.replace(ducked_path, result)
+            except Exception as e:
+                print(f"  对话闪避失败（跳过）: {e}")
+
+        # 后处理：颜色分级
+        if color_preset and color_preset != "none":
+            print(f"\n  颜色分级: {color_preset}...")
+            try:
+                from packages.video_enhancement.src.color_grading import apply_color_grade
+                graded_path = output_path.replace(".mp4", "_graded.mp4")
+                apply_color_grade(result, graded_path, preset=color_preset)
+                if Path(graded_path).exists():
+                    import os
+                    os.replace(graded_path, result)
+            except Exception as e:
+                print(f"  颜色分级失败（跳过）: {e}")
+
+        # 后处理：自动竖屏裁切
+        if enable_reframe:
+            print(f"\n  自动竖屏裁切...")
+            try:
+                from packages.video_enhancement.src.auto_reframe import auto_reframe
+                reframed_path = output_path.replace(".mp4", "_9x16.mp4")
+                auto_reframe(result, reframed_path, target_aspect=reframe_aspect)
+                if Path(reframed_path).exists():
+                    result = reframed_path
+            except Exception as e:
+                print(f"  竖屏裁切失败（跳过）: {e}")
 
         print("\n" + "=" * 50)
         print("混剪完成!")
@@ -550,8 +889,12 @@ def main():
                                  "yarn", "zhaotaici"],
                         help="素材来源（默认 playphrase）")
     parser.add_argument("--clip-limit", type=int, default=20, help="最大下载片段数，默认 20（仅 --query 模式）")
-    parser.add_argument("--bgm", required=True, help="BGM 文件路径")
-    parser.add_argument("--style", default="dynamic", choices=["dynamic", "calm", "intense"])
+    parser.add_argument("--bgm", help="BGM 文件路径（与 --bgm-query 二选一）")
+    parser.add_argument("--bgm-query", help="BGM 搜索关键词，自动从B站搜索下载（与 --bgm 二选一）")
+    parser.add_argument("--style", default="dynamic", choices=["dynamic", "calm", "intense"],
+                        help="基础风格: dynamic(动感) / calm(舒缓) / intense(高燃)")
+    parser.add_argument("--style-preset", type=str, default=None,
+                        help="风格预设模板(如 action/wedding/cinematic/gaming 等)，会覆盖 --style 和 --enhance")
     parser.add_argument("--output", default="final.mp4", help="输出文件名")
     parser.add_argument("--threshold", type=float, default=0.2,
                         help="镜头检测灵敏度 0.01~1.0，越小切得越细（默认 0.2，混剪推荐 0.1~0.2）")
@@ -563,11 +906,24 @@ def main():
     parser.add_argument("--enhance", nargs="*", default=[],
                         help="视频增强选项: stabilize denoise color-grade")
     parser.add_argument("--export-timeline", type=str,
-                        choices=["edl", "csv", "json", "xml"],
+                        choices=["edl", "csv", "json", "xml", "otio"],
                         help="导出时间轴格式")
     parser.add_argument("--webui", action="store_true", help="启动 WebUI 界面")
 
     args = parser.parse_args()
+
+    # 风格预设模板处理
+    if args.style_preset:
+        from packages.video_enhancement.src.style_templates import get_pipeline_params
+        preset_params = get_pipeline_params(args.style_preset)
+        args.style = preset_params.get("style", args.style)
+        if preset_params.get("stabilize") and "stabilize" not in args.enhance:
+            args.enhance.append("stabilize")
+        if preset_params.get("color_preset"):
+            args._color_preset = preset_params["color_preset"]
+            if "color-grade" not in args.enhance:
+                args.enhance.append("color-grade")
+        print(f"  风格预设: {args.style_preset} -> style={args.style}, color={getattr(args, '_color_preset', 'default')}")
 
     # WebUI 模式
     if args.webui:
@@ -594,8 +950,22 @@ def main():
                 print(f"错误: 视频文件不存在: {movie}")
                 return
 
-    if not Path(args.bgm).exists():
-        print(f"错误: BGM 文件不存在: {args.bgm}")
+    # BGM 处理：本地文件或搜索下载
+    bgm_path = args.bgm
+    if not bgm_path and not args.bgm_query:
+        print("错误: 请指定 --bgm（本地文件）或 --bgm-query（搜索关键词）")
+        return
+    if args.bgm_query:
+        from packages.video_crawler.src.bgm_crawler import BgmCrawler
+        bgm_crawler = BgmCrawler()
+        bgm_paths = bgm_crawler.search_and_download(args.bgm_query, max_clips=1)
+        if not bgm_paths:
+            print("错误: 未找到 BGM")
+            return
+        bgm_path = bgm_paths[0]
+        print(f"  使用 BGM: {bgm_path}")
+    elif not Path(bgm_path).exists():
+        print(f"错误: BGM 文件不存在: {bgm_path}")
         return
 
     # LLM 自然语言控制
@@ -629,7 +999,7 @@ def main():
 
     # 运行 pipeline
     pipeline = MontagePipeline()
-    result_path = pipeline.run(video_paths, args.bgm, args.style, args.output, threshold=args.threshold)
+    result_path = pipeline.run(video_paths, bgm_path, args.style, args.output, threshold=args.threshold)
 
     # 后处理：视频增强
     if args.enhance:
@@ -708,6 +1078,13 @@ def _apply_subtitles(video_path: str, style: str):
 
 def _export_timeline(pipeline, format: str):
     """导出时间轴"""
+    # OTIO 使用专用导出器
+    if format == "otio":
+        from packages.timeline_export.src.otio_exporter import export_otio_from_pipeline
+        output_path = f"{pipeline.output_dir}/timeline.otio"
+        export_otio_from_pipeline(pipeline, output_path)
+        return
+
     from packages.timeline_export import TimelineExporter, Timeline, Clip
 
     # 从 pipeline 中收集的时间线数据构建 Timeline 对象
