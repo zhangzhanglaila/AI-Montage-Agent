@@ -29,7 +29,7 @@ class ShotDetector:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def detect(self, video_path: str, threshold: float = 0.3) -> List[Shot]:
+    def detect(self, video_path: str, threshold: float = 0.3, video_index: int = 0) -> List[Shot]:
         """检测镜头并切割"""
         print(f"  检测镜头: {video_path}")
 
@@ -82,22 +82,24 @@ class ShotDetector:
                 continue
 
             shots.append(Shot(
-                shot_id=i,
+                shot_id=video_index * 10000 + i,
                 start_time=start,
                 end_time=end,
                 duration=end - start,
-                file_path=str(shot_path)
+                file_path=str(shot_path),
+                source_video=video_path,
             ))
 
         # 如果切割全部失败，直接复制原视频作为单镜头
         if not shots and duration > 0:
             print(f"  切割失败，使用原视频作为单镜头")
             shots.append(Shot(
-                shot_id=0,
+                shot_id=video_index * 10000,
                 start_time=0.0,
                 end_time=duration,
                 duration=duration,
-                file_path=video_path
+                file_path=video_path,
+                source_video=video_path,
             ))
 
         print(f"  检测到 {len(shots)} 个镜头")
@@ -430,12 +432,12 @@ class BeatSyncEngine:
         beats: List[Beat],
         style: str = "dynamic"
     ) -> List[TimelineEntry]:
-        """将镜头与节拍同步（支持强弱拍分类）"""
+        """将镜头与节拍同步（去重约束已在选择阶段完成）"""
         if not shots or not beats:
             return []
 
-        # 按高光分数排序
-        sorted_shots = sorted(shots, key=lambda s: s.highlight_score, reverse=True)
+        # 保持输入顺序（已经是交替排列的）
+        sorted_shots = shots
 
         # 获取风格参数
         params = self._get_style_params(style)
@@ -446,6 +448,9 @@ class BeatSyncEngine:
         for i, shot in enumerate(sorted_shots):
             if beat_idx >= len(beats):
                 break
+
+            # 获取当前节拍
+            beat = beats[beat_idx]
 
             # 获取当前节拍
             beat = beats[beat_idx]
@@ -488,8 +493,8 @@ class BeatSyncEngine:
 
             timeline.append(entry)
 
-            # 跳过相应的节拍
-            beats_to_skip = max(1, int(duration / beat_interval))
+            # 跳过相应的节拍（用 round 替代 int 避免截断导致重叠）
+            beats_to_skip = max(1, round(duration / beat_interval))
             beat_idx += beats_to_skip
 
         # 按时间排序
@@ -500,9 +505,9 @@ class BeatSyncEngine:
     def _get_style_params(self, style: str) -> Dict[str, float]:
         """获取风格参数"""
         params = {
-            "dynamic": {"fast": 0.3, "medium": 0.5, "slow": 1.0, "slow_speed": 0.5, "fast_speed": 1.5},
-            "calm": {"fast": 0.5, "medium": 1.0, "slow": 2.0, "slow_speed": 0.7, "fast_speed": 1.2},
-            "intense": {"fast": 0.2, "medium": 0.3, "slow": 0.5, "slow_speed": 0.3, "fast_speed": 2.0},
+            "dynamic": {"fast": 1.0, "medium": 1.5, "slow": 2.5, "slow_speed": 0.7, "fast_speed": 1.2},
+            "calm": {"fast": 1.5, "medium": 2.5, "slow": 4.0, "slow_speed": 0.8, "fast_speed": 1.1},
+            "intense": {"fast": 0.5, "medium": 1.0, "slow": 1.5, "slow_speed": 0.5, "fast_speed": 1.5},
         }
         return params.get(style, params["dynamic"])
 
@@ -551,16 +556,22 @@ class VideoRenderer:
 
         temp_files = []
 
-        # Step 1: 调整速度
+        # Step 1: 截取到时间线时长 + 调整速度 + 复制到短路径
+        import shutil
         prepared = []
-        for entry in valid_entries:
+        for idx, entry in enumerate(valid_entries):
+            # 先截取到时间线指定的时长
+            trimmed_path = self.output_dir / f"trim_{idx}.mp4"
+            self._trim_video(entry.shot_path, str(trimmed_path), entry.duration)
+            temp_files.append(trimmed_path)
+
             if entry.speed_factor != 1.0:
-                temp_path = self.output_dir / f"speed_{entry.shot_id}.mp4"
-                self._adjust_speed(entry.shot_path, str(temp_path), entry.speed_factor)
+                temp_path = self.output_dir / f"speed_{idx}.mp4"
+                self._adjust_speed(str(trimmed_path), str(temp_path), entry.speed_factor)
                 temp_files.append(temp_path)
                 prepared.append(str(temp_path))
             else:
-                prepared.append(entry.shot_path)
+                prepared.append(str(trimmed_path))
 
         # Step 2: 检查是否有非 cut 转场
         has_transitions = any(
@@ -697,6 +708,18 @@ class VideoRenderer:
         except ValueError:
             return 2.0
 
+    def _trim_video(self, input_path: str, output_path: str, duration: float):
+        """截取视频到指定时长"""
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", input_path,
+            "-t", str(duration),
+            "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            output_path
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+
     def _adjust_speed(self, input_path: str, output_path: str, speed: float):
         """调整视频速度"""
         pts = 1.0 / speed
@@ -769,9 +792,9 @@ class MontagePipeline:
             raise ValueError("没有可用的视频文件，请检查搜索关键词或上传文件")
 
         all_shots = []
-        for video_path in video_paths:
+        for video_idx, video_path in enumerate(video_paths):
             print(f"  处理视频: {Path(video_path).name}")
-            shots = self.shot_detector.detect(video_path, threshold=threshold)
+            shots = self.shot_detector.detect(video_path, threshold=threshold, video_index=video_idx)
             all_shots.extend(shots)
 
         if not all_shots:
@@ -795,7 +818,43 @@ class MontagePipeline:
 
         # Step 5: 卡点同步
         print("\n[5/6] 卡点同步...")
-        timeline = self.sync_engine.sync(all_shots, beat_analysis.beats, style)
+        # 按 source_video 分组，每视频最多取 top N 个镜头（带最小间隔）
+        max_per_video = 15
+        min_gap = 20  # 同一视频相邻镜头的最小间隔（确保视觉差异）
+        video_shots: Dict[str, List[Shot]] = {}
+        for shot in all_shots:
+            key = shot.source_video or "unknown"
+            if key not in video_shots:
+                video_shots[key] = []
+            video_shots[key].append(shot)
+
+        # 每个视频取 top max_per_video 个高分镜头（带间隔约束）
+        per_video_lists = []
+        for key, shots in video_shots.items():
+            sorted_group = sorted(shots, key=lambda s: s.highlight_score, reverse=True)
+            selected = []
+            last_id = -999
+            for shot in sorted_group:
+                if len(selected) >= max_per_video:
+                    break
+                if abs(shot.shot_id - last_id) >= min_gap:
+                    selected.append(shot)
+                    last_id = shot.shot_id
+            per_video_lists.append(selected)
+
+        # 交替排列不同视频的镜头（避免连续同源）
+        balanced_shots = []
+        max_len = max(len(lst) for lst in per_video_lists) if per_video_lists else 0
+        for i in range(max_len):
+            for lst in per_video_lists:
+                if i < len(lst):
+                    balanced_shots.append(lst[i])
+
+        # 截取 top 50（保持交替排列，不按分数重新排序）
+        max_shots = min(50, len(balanced_shots))
+        top_shots = balanced_shots[:max_shots]
+        print(f"  选择 Top {max_shots} 高光镜头（共 {len(all_shots)} 个，来自 {len(video_shots)} 个视频）")
+        timeline = self.sync_engine.sync(top_shots, beat_analysis.beats, style)
 
         if not timeline:
             raise ValueError("时间线为空")

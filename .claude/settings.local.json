@@ -37,7 +37,21 @@
       "Bash(pip search *)",
       "Bash(yt-dlp --js-runtimes node -x --audio-format mp3 --audio-quality 0 -o \"cache/bgm/test_%\\(id\\)s.%\\(ext\\)s\" --no-playlist \"ytsearch1:epic cinematic BGM no copyright\")",
       "Bash(yt-dlp --js-runtimes node -x --audio-format mp3 --audio-quality 0 -o \"cache/bgm/test_bili.%\\(ext\\)s\" --no-playlist \"https://www.bilibili.com/video/BV1Wc5e6rEH8\")",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(ffprobe -v quiet -print_format json -show_format -show_streams output/test_output.mp4)",
+      "Bash(ffprobe -v quiet -print_format json -show_format output/test_montage.mp4)",
+      "Bash(ffprobe -v quiet -print_format json -show_streams output/test_montage.mp4)",
+      "Bash(ffprobe -v quiet -print_format json -show_format -show_streams output/test_montage2.mp4)",
+      "Bash(ffprobe -v quiet -print_format json -show_format output/test_montage3.mp4)",
+      "Bash(ffprobe -v quiet -print_format json -show_format output/test_montage4.mp4)",
+      "Bash(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 output/test_montage4.mp4)",
+      "Bash(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 cache/bgm/BV14AQ8BsEx8.mp3)",
+      "Bash(ls -la output/concat.mp4)",
+      "Bash(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 output/concat.mp4)",
+      "Bash(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 output/test_montage5.mp4)",
+      "Bash(ffprobe -v quiet -print_format json -show_format -show_streams output/test_montage5.mp4)",
+      "Bash(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 output/test_montage6.mp4)",
+      "Bash(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 output/test_montage7.mp4)"
     ]
   }
 }

@@ -12,6 +12,7 @@ class Shot:
     end_time: float
     duration: float
     file_path: Optional[str] = None
+    source_video: str = ""
     highlight_score: float = 0.0
     motion_score: float = 0.0
     actions: List[str] = field(default_factory=list)
@@ -24,6 +25,7 @@ class Shot:
             "end": self.end_time,
             "duration": self.duration,
             "file_path": self.file_path,
+            "source_video": self.source_video,
             "highlight_score": self.highlight_score,
             "motion_score": self.motion_score,
             "actions": self.actions,
