@@ -51,7 +51,13 @@
       "Bash(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 output/test_montage5.mp4)",
       "Bash(ffprobe -v quiet -print_format json -show_format -show_streams output/test_montage5.mp4)",
       "Bash(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 output/test_montage6.mp4)",
-      "Bash(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 output/test_montage7.mp4)"
+      "Bash(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 output/test_montage7.mp4)",
+      "Bash(ffprobe -v quiet -print_format json -show_format -show_streams output/test_final.mp4)",
+      "Bash(ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/test_final.mp4)",
+      "Bash(ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/test_final2.mp4)",
+      "Bash(ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/test_final3.mp4)",
+      "Bash(ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/final_montage.mp4)",
+      "Bash(ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/final_montage2.mp4)"
     ]
   }
 }

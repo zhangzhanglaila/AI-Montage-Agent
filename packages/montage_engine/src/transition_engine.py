@@ -3,6 +3,7 @@ Transition Engine
 转场引擎 - 实现各种转场效果
 """
 
+import os
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -28,6 +29,8 @@ class Transition:
     type: TransitionType
     duration: float = 0.5
     direction: str = "right"  # left, right, up, down
+    width: int = 1920
+    height: int = 1080
     intensity: float = 1.0
 
     def to_dict(self) -> Dict[str, Any]:
@@ -160,10 +163,11 @@ class TransitionEngine:
         """构建闪光转场滤镜"""
         duration = transition.duration
         intensity = transition.intensity
+        res = f"{transition.width}x{transition.height}"
 
         # 创建白色闪光帧
         return (
-            f"color=white:s=1920x1080:d={duration/2}[flash];"
+            f"color=white:s={res}:d={duration/2}[flash];"
             f"[0:v][flash][1:v]concat=n=3:v=1[out]"
         )
 
@@ -184,9 +188,10 @@ class TransitionEngine:
     def _build_zoom_filter(self, transition: Transition) -> str:
         """构建缩放转场滤镜（zoom in/out）"""
         duration = transition.duration
+        res = f"{transition.width}x{transition.height}"
         return (
-            f"[0:v]zoompan=z='min(zoom+0.015,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080[v0];"
-            f"[1:v]zoompan=z='if(eq(on,1),1.5,max(1.001,zoom-0.015))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080[v1];"
+            f"[0:v]zoompan=z='min(zoom+0.015,1.5)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={res}[v0];"
+            f"[1:v]zoompan=z='if(eq(on,1),1.5,max(1.001,zoom-0.015))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={res}[v1];"
             f"[v0][v1]concat=n=2:v=1[out]"
         )
 
@@ -198,7 +203,7 @@ class TransitionEngine:
             f"[0:v]crop=in_w-{int(20*intensity)}:in_h-{int(20*intensity)}:"
             f"x='if(eq(mod(n,4),0),10,if(eq(mod(n,4),1),5,if(eq(mod(n,4),2),15,0)))':"
             f"y='if(eq(mod(n,4),0),5,if(eq(mod(n,4),1),10,if(eq(mod(n,4),2),0,15)))'[v0];"
-            f"[v0]scale=1920:1080[v0s];"
+            f"[v0]scale={transition.width}:{transition.height}[v0s];"
             f"[v0s][1:v]concat=n=2:v=1[out]"
         )
 
@@ -268,7 +273,6 @@ class TransitionEngine:
 
         # 清理临时文件
         for temp_file in temp_files:
-            import os
             if os.path.exists(temp_file):
                 os.remove(temp_file)
 
