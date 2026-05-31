@@ -351,6 +351,47 @@
         }
         .progress-status { text-align: center; font-size: 0.9em; font-weight: 700; color: #333; }
 
+        /* ===== 进度步骤指示器 ===== */
+        .progress-steps {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin: 14px 0 8px;
+            flex-wrap: wrap;
+        }
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border: 2px solid #ccc;
+            border-radius: 4px;
+            font-size: 0.78em;
+            font-weight: 700;
+            color: #999;
+            background: #f4f4f5;
+            transition: all 0.3s;
+        }
+        .step-item.active {
+            border-color: #FB7299;
+            color: #FB7299;
+            background: #ffe4ec;
+        }
+        .step-item.done {
+            border-color: #4CAF50;
+            color: #4CAF50;
+            background: #e8f5e9;
+        }
+        .step-item .step-icon { font-size: 1em; }
+
+        /* 已用时间 */
+        .progress-elapsed {
+            text-align: center;
+            font-size: 0.8em;
+            color: #999;
+            margin-top: 4px;
+        }
+
         /* ===== 结果 ===== */
         .result { display: none; text-align: center; padding: 20px; }
         .result.active { display: block; }
@@ -527,8 +568,16 @@
         <!-- 进度 -->
         <div class="card progress-container" id="progress-section">
             <h2><span class="num">!</span> 混剪进度</h2>
+            <div class="progress-steps" id="progress-steps">
+                <div class="step-item" id="step-bgm"><span class="step-icon">🎵</span> BGM</div>
+                <div class="step-item" id="step-search"><span class="step-icon">🔍</span> 搜索素材</div>
+                <div class="step-item" id="step-analyze"><span class="step-icon">🧠</span> 分析</div>
+                <div class="step-item" id="step-render"><span class="step-icon">🎬</span> 渲染</div>
+                <div class="step-item" id="step-post"><span class="step-icon">✨</span> 后处理</div>
+            </div>
             <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
             <p class="progress-status" id="progress-msg">准备中...</p>
+            <p class="progress-elapsed" id="progress-elapsed"></p>
         </div>
 
         <!-- 结果 -->
@@ -720,10 +769,92 @@
             return data.path;
         }
 
+        // ===== 进度步骤管理 =====
+        let _elapsedTimer = null;
+        let _elapsedStart = 0;
+        let _currentEvtSource = null;
+
+        function resetProgressSteps() {
+            ["step-bgm", "step-search", "step-analyze", "step-render", "step-post"].forEach(id => {
+                const el = document.getElementById(id);
+                el.classList.remove("active", "done");
+            });
+        }
+
+        function setStepActive(stepId) {
+            const el = document.getElementById(stepId);
+            if (el) { el.classList.add("active"); el.classList.remove("done"); }
+        }
+
+        function setStepDone(stepId) {
+            const el = document.getElementById(stepId);
+            if (el) { el.classList.remove("active"); el.classList.add("done"); }
+        }
+
+        function updateStepsByProgress(progress, message) {
+            const msg = message || "";
+            // BGM 阶段: 0-8
+            if (progress <= 8) {
+                if (progress >= 8) { setStepDone("step-bgm"); } else { setStepActive("step-bgm"); }
+                setStepActive("step-bgm");
+            } else {
+                setStepDone("step-bgm");
+            }
+            // 搜索素材阶段: 10-25
+            if (progress > 8 && progress <= 25) {
+                setStepActive("step-search");
+            } else if (progress > 25) {
+                setStepDone("step-search");
+            }
+            // 分析阶段: 30-50
+            if (progress > 25 && progress <= 50) {
+                setStepActive("step-analyze");
+            } else if (progress > 50) {
+                setStepDone("step-analyze");
+            }
+            // 渲染阶段: 50-80
+            if (progress > 50 && progress <= 80) {
+                setStepActive("step-render");
+            } else if (progress > 80) {
+                setStepDone("step-render");
+            }
+            // 后处理阶段: 85-100
+            if (progress > 80) {
+                setStepActive("step-post");
+            }
+        }
+
+        function startElapsedTimer() {
+            _elapsedStart = Date.now();
+            const el = document.getElementById("progress-elapsed");
+            _elapsedTimer = setInterval(() => {
+                const sec = Math.floor((Date.now() - _elapsedStart) / 1000);
+                const m = Math.floor(sec / 60);
+                const s = sec % 60;
+                el.textContent = `已用时 ${m}:${String(s).padStart(2, "0")}`;
+            }, 1000);
+        }
+
+        function stopElapsedTimer() {
+            if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+        }
+
+        // ===== 提交任务 =====
         async function submitTask() {
             const btn = document.getElementById("submit-btn");
             btn.disabled = true;
             btn.textContent = "处理中...";
+
+            // 立即显示进度区域
+            const progressSection = document.getElementById("progress-section");
+            const resultSection = document.getElementById("result-section");
+            resultSection.classList.remove("active");
+            progressSection.classList.add("active");
+            resetProgressSteps();
+            document.getElementById("progress-fill").style.width = "0%";
+            document.getElementById("progress-msg").textContent = "正在提交任务...";
+            document.getElementById("progress-elapsed").textContent = "";
+            startElapsedTimer();
 
             try {
                 let videoPaths, bgmPath;
@@ -734,7 +865,8 @@
                     if (!bgmFile) {
                         shake(document.getElementById("bgm-upload-section"));
                         showToast("请选择 BGM 文件");
-                        btn.disabled = false; btn.textContent = "开始混剪"; return;
+                        btn.disabled = false; btn.textContent = "开始混剪";
+                        stopElapsedTimer(); return;
                     }
                     bgmPath = await uploadBgm(bgmFile);
                 }
@@ -745,7 +877,8 @@
                     if (videoFiles.length === 0) {
                         shake(document.getElementById("upload-section"));
                         showToast("请选择视频文件");
-                        btn.disabled = false; btn.textContent = "开始混剪"; return;
+                        btn.disabled = false; btn.textContent = "开始混剪";
+                        stopElapsedTimer(); return;
                     }
                     videoPaths = await uploadFiles(videoFiles);
                 }
@@ -767,7 +900,8 @@
                     if (!bgmQuery.value.trim()) {
                         shake(bgmQuery);
                         showToast("请输入 BGM 搜索关键词");
-                        btn.disabled = false; btn.textContent = "开始混剪"; return;
+                        btn.disabled = false; btn.textContent = "开始混剪";
+                        stopElapsedTimer(); return;
                     }
                     formData.append("bgm_query", bgmQuery.value);
                 }
@@ -777,52 +911,103 @@
                     if (!query.value.trim()) {
                         shake(query);
                         showToast("请输入搜索关键词");
-                        btn.disabled = false; btn.textContent = "开始混剪"; return;
+                        btn.disabled = false; btn.textContent = "开始混剪";
+                        stopElapsedTimer(); return;
                     }
                     if (selectedSources.length === 0) {
                         shake(document.querySelector(".source-toggle"));
                         showToast("请至少选择一个素材来源");
-                        btn.disabled = false; btn.textContent = "开始混剪"; return;
+                        btn.disabled = false; btn.textContent = "开始混剪";
+                        stopElapsedTimer(); return;
                     }
                     formData.append("query", query.value);
                     formData.append("source", selectedSources[0]);
                     formData.append("clip_limit", document.getElementById("clip-limit").value);
                 }
 
-                const resp = await fetch("/api/montage", { method: "POST", body: formData });
-                const data = await resp.json();
+                // 带超时的 fetch（60秒）
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 60000);
+                const resp = await fetch("/api/montage", { method: "POST", body: formData, signal: controller.signal });
+                clearTimeout(timeoutId);
 
-                document.getElementById("progress-section").classList.add("active");
+                if (!resp.ok) {
+                    throw new Error(`服务器返回错误 (${resp.status})`);
+                }
+
+                const data = await resp.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
                 listenProgress(data.task_id);
 
             } catch (e) {
-                showToast("出错了: " + e.message);
+                stopElapsedTimer();
+                if (e.name === "AbortError") {
+                    showToast("提交超时，请检查服务器是否正常运行");
+                    document.getElementById("progress-msg").textContent = "提交超时，请重试";
+                } else {
+                    showToast("出错了: " + e.message);
+                    document.getElementById("progress-msg").textContent = "出错: " + e.message;
+                }
                 btn.disabled = false;
                 btn.textContent = "开始混剪";
             }
         }
 
         function listenProgress(taskId) {
+            if (_currentEvtSource) { _currentEvtSource.close(); }
             const evtSource = new EventSource(`/api/task/${taskId}/progress`);
+            _currentEvtSource = evtSource;
+
+            let retryCount = 0;
+            const maxRetries = 3;
+
             evtSource.onmessage = (e) => {
+                retryCount = 0; // 收到消息就重置重试计数
                 const data = JSON.parse(e.data);
-                document.getElementById("progress-fill").style.width = data.progress + "%";
-                document.getElementById("progress-msg").textContent = data.message;
+                const progress = data.progress || 0;
+                const message = data.message || "";
+
+                document.getElementById("progress-fill").style.width = progress + "%";
+                document.getElementById("progress-msg").textContent = message;
+                updateStepsByProgress(progress, message);
 
                 if (data.status === "done") {
                     evtSource.close();
+                    _currentEvtSource = null;
+                    stopElapsedTimer();
+                    setStepDone("step-post");
                     document.getElementById("result-section").classList.add("active");
                     document.getElementById("download-link").href = `/api/download/${taskId}`;
                     document.getElementById("submit-btn").disabled = false;
                     document.getElementById("submit-btn").textContent = "开始混剪";
+                    showToast("混剪完成! 🎉");
                 } else if (data.status === "error") {
                     evtSource.close();
-                    showToast("混剪失败: " + data.message);
+                    _currentEvtSource = null;
+                    stopElapsedTimer();
+                    showToast("❌ " + (data.message || "混剪失败"));
                     document.getElementById("submit-btn").disabled = false;
                     document.getElementById("submit-btn").textContent = "开始混剪";
                 }
             };
-            evtSource.onerror = () => { evtSource.close(); };
+
+            evtSource.onerror = () => {
+                evtSource.close();
+                _currentEvtSource = null;
+                // SSE 断开时如果还没收到完成/错误状态，提示用户
+                stopElapsedTimer();
+                const fill = document.getElementById("progress-fill");
+                const currentProgress = parseFloat(fill.style.width) || 0;
+                if (currentProgress < 100) {
+                    showToast("连接中断，请刷新页面重试");
+                    document.getElementById("progress-msg").textContent = "⚠️ 进度连接中断";
+                    document.getElementById("submit-btn").disabled = false;
+                    document.getElementById("submit-btn").textContent = "开始混剪";
+                }
+            };
         }
 
         // 初始化
