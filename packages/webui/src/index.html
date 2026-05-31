@@ -295,6 +295,136 @@
             margin-top: 2px;
         }
 
+        /* ===== 高级设置（折叠面板） ===== */
+        .adv-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #f4f4f5;
+            border: 2px solid #000;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.95em;
+            transition: all 0.15s;
+            user-select: none;
+            margin-bottom: 0;
+        }
+        .adv-toggle:hover { background: #ffe4ec; }
+        .adv-toggle .arrow { transition: transform 0.2s; font-size: 0.8em; }
+        .adv-toggle.open .arrow { transform: rotate(180deg); }
+        .adv-toggle.open { border-bottom-color: #FB7299; }
+
+        .adv-panel {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease;
+            border: 2px solid #000;
+            border-top: 0;
+            border-radius: 0 0 4px 4px;
+            padding: 0 16px;
+        }
+        .adv-panel.open {
+            max-height: 1200px;
+            padding: 16px;
+        }
+        .adv-panel .form-group:last-child { margin-bottom: 0; }
+
+        /* 比例选择卡片 */
+        .ratio-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+        .ratio-option {
+            flex: 1;
+            min-width: 80px;
+            padding: 10px 6px;
+            background: #fff;
+            border: 2px solid #000;
+            box-shadow: 2px 2px 0 #000;
+            cursor: pointer;
+            text-align: center;
+            font-size: 0.82em;
+            font-weight: 700;
+            transition: all 0.12s;
+            user-select: none;
+        }
+        .ratio-option:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 #000; }
+        .ratio-option.active { background: #FB7299; color: #fff; border-color: #000; }
+        .ratio-option .ratio-icon {
+            display: block;
+            margin: 0 auto 4px;
+            border: 2px solid currentColor;
+            border-radius: 2px;
+        }
+
+        /* 色彩分级网格 */
+        .grade-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; }
+        .grade-option {
+            padding: 8px 4px;
+            background: #fff;
+            border: 2px solid #000;
+            cursor: pointer;
+            text-align: center;
+            font-size: 0.75em;
+            font-weight: 700;
+            transition: all 0.12s;
+            user-select: none;
+        }
+        .grade-option:hover { background: #ffe4ec; }
+        .grade-option.active { background: #FB7299; color: #fff; border-color: #000; }
+
+        /* 开关 toggle */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+        }
+        .toggle-row label { margin-bottom: 0; }
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #ccc;
+            border: 2px solid #000;
+            border-radius: 24px;
+            transition: 0.2s;
+        }
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 16px; height: 16px;
+            left: 2px; bottom: 2px;
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+        .toggle-switch input:checked + .toggle-slider { background: #FB7299; }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+        /* 增强选项 chips */
+        .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+        .chip {
+            padding: 6px 14px;
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.82em;
+            font-weight: 700;
+            transition: all 0.12s;
+            user-select: none;
+        }
+        .chip:hover { background: #ffe4ec; }
+        .chip.active { background: #FB7299; color: #fff; border-color: #000; }
+
         /* ===== 提交按钮（漫画大按钮） ===== */
         .btn {
             padding: 14px 32px;
@@ -563,6 +693,132 @@
             <input type="hidden" id="style-preset-value" value="">
         </div>
 
+        <!-- 4. 高级设置 -->
+        <div class="card">
+            <div class="adv-toggle" onclick="toggleAdvPanel()">
+                <span><span class="num" style="display:inline-flex;width:28px;height:28px;background:#FB7299;color:#fff;font-size:0.85em;font-weight:900;border:2px solid #000;align-items:center;justify-content:center;flex-shrink:0;vertical-align:middle;margin-right:8px;">4</span> 高级设置</span>
+                <span class="arrow">&#9660;</span>
+            </div>
+            <div class="adv-panel" id="adv-panel">
+
+                <!-- 输出比例 -->
+                <div class="form-group">
+                    <label>输出比例</label>
+                    <div class="ratio-grid" id="ratio-grid">
+                        <div class="ratio-option active" data-ratio="16/9" onclick="selectRatio(this)">
+                            <span class="ratio-icon" style="width:36px;height:20px;"></span>
+                            16:9 横屏
+                        </div>
+                        <div class="ratio-option" data-ratio="9/16" onclick="selectRatio(this)">
+                            <span class="ratio-icon" style="width:20px;height:36px;"></span>
+                            9:16 竖屏
+                        </div>
+                        <div class="ratio-option" data-ratio="1/1" onclick="selectRatio(this)">
+                            <span class="ratio-icon" style="width:28px;height:28px;"></span>
+                            1:1 方形
+                        </div>
+                        <div class="ratio-option" data-ratio="4/5" onclick="selectRatio(this)">
+                            <span class="ratio-icon" style="width:24px;height:30px;"></span>
+                            4:5 小红书
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 字幕 -->
+                <div class="form-group">
+                    <div class="toggle-row">
+                        <label>自动字幕（Whisper 语音识别）</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="enable-subtitles" onchange="toggleSubtitleOptions()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div id="subtitle-options" style="display:none; margin-top:10px;">
+                        <div style="display:flex; gap:10px;">
+                            <div style="flex:1;">
+                                <label style="font-size:0.82em; font-weight:700; color:#333; display:block; margin-bottom:4px;">字幕样式</label>
+                                <select id="subtitle-style" style="width:100%; padding:8px 10px; background:#fff; border:2px solid #000; border-radius:4px; font-size:0.88em; font-family:inherit;">
+                                    <option value="tiktok">TikTok（居中大字）</option>
+                                    <option value="youtube">YouTube（底部标准）</option>
+                                    <option value="minimal">极简（细字幕）</option>
+                                    <option value="karaoke">卡拉OK（逐字高亮）</option>
+                                    <option value="bold">粗体（醒目白字）</option>
+                                    <option value="cinematic">电影感（底部半透明）</option>
+                                </select>
+                            </div>
+                            <div style="flex:1;">
+                                <label style="font-size:0.82em; font-weight:700; color:#333; display:block; margin-bottom:4px;">语言</label>
+                                <select id="subtitle-lang" style="width:100%; padding:8px 10px; background:#fff; border:2px solid #000; border-radius:4px; font-size:0.88em; font-family:inherit;">
+                                    <option value="auto">自动检测</option>
+                                    <option value="zh">中文</option>
+                                    <option value="en">英文</option>
+                                    <option value="ja">日文</option>
+                                    <option value="ko">韩文</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 色彩分级 -->
+                <div class="form-group">
+                    <label>色彩分级</label>
+                    <div class="grade-grid" id="grade-grid">
+                        <div class="grade-option active" data-grade="none" onclick="selectGrade(this)">无</div>
+                        <div class="grade-option" data-grade="cinematic" onclick="selectGrade(this)">电影</div>
+                        <div class="grade-option" data-grade="vibrant" onclick="selectGrade(this)">鲜艳</div>
+                        <div class="grade-option" data-grade="vintage" onclick="selectGrade(this)">复古</div>
+                        <div class="grade-option" data-grade="teal_orange" onclick="selectGrade(this)">青橙</div>
+                        <div class="grade-option" data-grade="noir" onclick="selectGrade(this)">黑白</div>
+                        <div class="grade-option" data-grade="warm" onclick="selectGrade(this)">暖色</div>
+                        <div class="grade-option" data-grade="cool" onclick="selectGrade(this)">冷色</div>
+                        <div class="grade-option" data-grade="golden_hour" onclick="selectGrade(this)">黄金时刻</div>
+                        <div class="grade-option" data-grade="blue_hour" onclick="selectGrade(this)">蓝调</div>
+                        <div class="grade-option" data-grade="blockbuster" onclick="selectGrade(this)">大片</div>
+                        <div class="grade-option" data-grade="high_contrast" onclick="selectGrade(this)">高对比</div>
+                        <div class="grade-option" data-grade="desaturated" onclick="selectGrade(this)">去饱和</div>
+                        <div class="grade-option" data-grade="filmic_warm" onclick="selectGrade(this)">胶片暖</div>
+                        <div class="grade-option" data-grade="documentary" onclick="selectGrade(this)">纪录片</div>
+                        <div class="grade-option" data-grade="natural" onclick="selectGrade(this)">自然</div>
+                        <div class="grade-option" data-grade="neutral" onclick="selectGrade(this)">中性</div>
+                    </div>
+                </div>
+
+                <!-- 对白闪避 -->
+                <div class="form-group">
+                    <div class="toggle-row">
+                        <label>对白闪避（有人声时自动降低 BGM）</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="enable-ducking">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 色彩统一 -->
+                <div class="form-group">
+                    <div class="toggle-row">
+                        <label>色彩统一（统一所有镜头亮度色调）</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="enable-harmonize">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 视频增强 -->
+                <div class="form-group">
+                    <label>视频增强</label>
+                    <div class="chips" id="enhance-chips">
+                        <div class="chip" data-enhance="denoise" onclick="toggleChip(this)">🔇 降噪</div>
+                        <div class="chip" data-enhance="sharpen" onclick="toggleChip(this)">🔪 锐化</div>
+                        <div class="chip" data-enhance="grain" onclick="toggleChip(this)">🎞️ 胶片颗粒</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
         <!-- 提交 -->
         <button class="btn btn-primary" id="submit-btn" onclick="submitTask()">开始混剪</button>
 
@@ -782,6 +1038,63 @@
             document.getElementById("style-value").value = styleMap[presetId] || "dynamic";
         }
 
+        // ===== 高级设置 =====
+        function toggleAdvPanel() {
+            const toggle = document.querySelector(".adv-toggle");
+            const panel = document.getElementById("adv-panel");
+            toggle.classList.toggle("open");
+            panel.classList.toggle("open");
+        }
+
+        // 输出比例
+        function selectRatio(el) {
+            document.querySelectorAll(".ratio-option").forEach(o => o.classList.remove("active"));
+            el.classList.add("active");
+        }
+
+        // 色彩分级
+        function selectGrade(el) {
+            document.querySelectorAll(".grade-option").forEach(o => o.classList.remove("active"));
+            el.classList.add("active");
+        }
+
+        // 字幕开关
+        function toggleSubtitleOptions() {
+            const on = document.getElementById("enable-subtitles").checked;
+            document.getElementById("subtitle-options").style.display = on ? "block" : "none";
+        }
+
+        // 增强 chips
+        function toggleChip(el) {
+            el.classList.toggle("active");
+        }
+
+        // 收集高级设置数据
+        function getAdvancedSettings() {
+            // 输出比例
+            const ratioEl = document.querySelector(".ratio-option.active");
+            const aspectRatio = ratioEl ? ratioEl.dataset.ratio : "16/9";
+
+            // 字幕
+            const enableSubtitles = document.getElementById("enable-subtitles").checked;
+            const subtitleStyle = document.getElementById("subtitle-style").value;
+            const subtitleLang = document.getElementById("subtitle-lang").value;
+
+            // 色彩分级
+            const gradeEl = document.querySelector(".grade-option.active");
+            const colorGrade = gradeEl ? gradeEl.dataset.grade : "none";
+
+            // 开关
+            const enableDucking = document.getElementById("enable-ducking").checked;
+            const enableHarmonize = document.getElementById("enable-harmonize").checked;
+
+            // 增强
+            const enhanceChips = document.querySelectorAll(".chip.active");
+            const enhanceOptions = Array.from(enhanceChips).map(c => c.dataset.enhance);
+
+            return { aspectRatio, enableSubtitles, subtitleStyle, subtitleLang, colorGrade, enableDucking, enableHarmonize, enhanceOptions };
+        }
+
         // ===== 上传 & 提交 =====
         async function uploadFiles(files) {
             const formData = new FormData();
@@ -954,6 +1267,19 @@
                     formData.append("source", selectedSources[0]);
                     formData.append("clip_limit", document.getElementById("clip-limit").value);
                 }
+
+                // 高级设置
+                const adv = getAdvancedSettings();
+                formData.append("aspect_ratio", adv.aspectRatio);
+                formData.append("enable_subtitles", adv.enableSubtitles ? "true" : "false");
+                if (adv.enableSubtitles) {
+                    formData.append("subtitle_style", adv.subtitleStyle);
+                    formData.append("subtitle_lang", adv.subtitleLang);
+                }
+                formData.append("color_grade", adv.colorGrade);
+                formData.append("enable_ducking", adv.enableDucking ? "true" : "false");
+                formData.append("enable_harmonize", adv.enableHarmonize ? "true" : "false");
+                formData.append("enhance_options", JSON.stringify(adv.enhanceOptions));
 
                 // 带超时的 fetch（60秒）
                 const controller = new AbortController();

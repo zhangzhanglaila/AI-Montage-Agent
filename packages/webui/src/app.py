@@ -32,7 +32,11 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 def _run_montage_task(task_id: str, video_paths: list, bgm_path: str, bgm_query: str,
                       style: str, output_name: str, query: str, source: str, clip_limit: int,
-                      color_preset: str = None, stabilize: bool = False):
+                      color_preset: str = None, stabilize: bool = False,
+                      aspect_ratio: str = "16/9", enable_subtitles: bool = False,
+                      subtitle_style: str = "tiktok", subtitle_lang: str = "auto",
+                      color_grade: str = "none", enable_ducking: bool = False,
+                      enable_harmonize: bool = False, enhance_options: list = None):
     """后台运行完整流程：搜索下载 → pipeline → 后处理"""
     import sys
     import traceback
@@ -120,33 +124,73 @@ def _run_montage_task(task_id: str, video_paths: list, bgm_path: str, bgm_query:
         task["progress"] = 30
         task["message"] = f"正在分析 {len(video_paths)} 个素材，检测镜头与节拍..."
 
+        # 解析输出比例
+        enable_reframe = (aspect_ratio != "16/9")
+        reframe_map = {"9/16": 9/16, "1/1": 1/1, "4/5": 4/5, "16/9": 16/9}
+        reframe_aspect = reframe_map.get(aspect_ratio, 9/16)
+
+        # 合并色彩分级：高级设置优先，其次用风格模板的
+        final_color_grade = color_grade if color_grade and color_grade != "none" else color_preset
+
         pipeline = MontagePipeline(cache_dir="cache", output_dir="output")
-        result = pipeline.run(video_paths, bgm_path, style, output_name, threshold=0.2)
+        result = pipeline.run(
+            video_paths, bgm_path, style, output_name,
+            threshold=0.2,
+            color_preset=final_color_grade if final_color_grade != "none" else None,
+            enable_reframe=enable_reframe,
+            reframe_aspect=reframe_aspect,
+            enable_ducking=enable_ducking,
+            enable_harmonize=enable_harmonize,
+        )
 
         # ===== 阶段 4：后处理 =====
-        if color_preset and color_preset != "none":
-            task["progress"] = 85
-            task["message"] = f"正在应用颜色分级: {color_preset}..."
-            try:
-                from packages.video_enhancement.src.color_grading import apply_color_grade
-                temp_path = result + ".graded.mp4"
-                apply_color_grade(result, temp_path, preset=color_preset)
-                import os
-                os.replace(temp_path, result)
-            except Exception as e:
-                print(f"[Color Grading] 跳过: {e}")
+        import os
 
+        # 防抖（来自风格模板）
         if stabilize:
-            task["progress"] = 90
+            task["progress"] = 88
             task["message"] = "正在应用视频防抖..."
             try:
                 from packages.video_enhancement.src.stabilizer import stabilize_video
                 temp_path = result + ".stab.mp4"
                 stabilize_video(result, temp_path)
-                import os
-                os.replace(temp_path, result)
+                if os.path.exists(temp_path):
+                    os.replace(temp_path, result)
             except Exception as e:
                 print(f"[Stabilize] 跳过: {e}")
+
+        # 视频增强（降噪/锐化/胶片颗粒）
+        if enhance_options:
+            try:
+                from packages.video_enhancement.src.enhancer import enhance_video
+                task["progress"] = 90
+                task["message"] = f"正在增强视频: {', '.join(enhance_options)}..."
+                temp_path = result + ".enhanced.mp4"
+                enhance_video(result, temp_path, denoise="denoise" in enhance_options,
+                              sharpen="sharpen" in enhance_options, film_grain="grain" in enhance_options)
+                if os.path.exists(temp_path):
+                    os.replace(temp_path, result)
+            except Exception as e:
+                print(f"[Enhance] 跳过: {e}")
+
+        # 字幕
+        if enable_subtitles:
+            task["progress"] = 93
+            task["message"] = "正在生成字幕（语音识别中，可能较慢）..."
+            try:
+                from packages.subtitle_engine.src.transcriber import Transcriber
+                from packages.subtitle_engine.src.caption_burner import burn_captions
+                transcriber = Transcriber()
+                lang = None if subtitle_lang == "auto" else subtitle_lang
+                srt_path = result.replace(".mp4", ".srt")
+                transcriber.transcribe(result, output_path=srt_path, language=lang)
+                if os.path.exists(srt_path):
+                    temp_path = result + ".subtitled.mp4"
+                    burn_captions(result, srt_path, temp_path, style=subtitle_style)
+                    if os.path.exists(temp_path):
+                        os.replace(temp_path, result)
+            except Exception as e:
+                print(f"[Subtitles] 跳过: {e}")
 
         task["status"] = "done"
         task["progress"] = 100
@@ -206,6 +250,15 @@ async def create_montage(
     query: Optional[str] = Form(None),
     source: str = Form("playphrase"),
     clip_limit: int = Form(20),
+    # 高级设置
+    aspect_ratio: str = Form("16/9"),
+    enable_subtitles: str = Form("false"),
+    subtitle_style: str = Form("tiktok"),
+    subtitle_lang: str = Form("auto"),
+    color_grade: str = Form("none"),
+    enable_ducking: str = Form("false"),
+    enable_harmonize: str = Form("false"),
+    enhance_options: str = Form("[]"),
 ):
     """创建混剪任务 — 立即返回 task_id，搜索下载在后台进行"""
     task_id = uuid.uuid4().hex
@@ -230,10 +283,15 @@ async def create_montage(
         color_preset = preset_params.get("color_preset")
         stabilize = preset_params.get("stabilize", False)
 
+    # 解析高级设置
+    _enhance = json.loads(enhance_options) if enhance_options else []
+
     # 立即返回 task_id，所有耗时操作在后台执行
     background_tasks.add_task(
         _run_montage_task, task_id, video_paths_list, bgm_path, bgm_query,
-        style, output_name, query, source, clip_limit, color_preset, stabilize
+        style, output_name, query, source, clip_limit, color_preset, stabilize,
+        aspect_ratio, enable_subtitles == "true", subtitle_style, subtitle_lang,
+        color_grade, enable_ducking == "true", enable_harmonize == "true", _enhance,
     )
 
     return {"task_id": task_id}
