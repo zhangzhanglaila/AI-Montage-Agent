@@ -265,18 +265,19 @@
         }
 
         /* ===== 风格选择（漫画卡片） ===== */
-        .style-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        .style-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
         .style-option {
-            padding: 14px 10px;
+            padding: 14px 8px;
             background: #fff;
             border: 3px solid #000;
             box-shadow: 3px 3px 0 #000;
             cursor: pointer;
             text-align: center;
-            font-size: 0.9em;
+            font-size: 0.85em;
             font-weight: 700;
             transition: all 0.12s;
             position: relative;
+            user-select: none;
         }
         .style-option:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 #000; }
         .style-option.active {
@@ -284,7 +285,15 @@
             color: #fff;
             border-color: #000;
         }
-        .style-option .style-icon { font-size: 1.5em; display: block; margin-bottom: 4px; }
+        .style-option .style-icon { font-size: 1.6em; display: block; margin-bottom: 4px; }
+        .style-option .style-name { display: block; line-height: 1.3; }
+        .style-option .style-tag {
+            display: block;
+            font-size: 0.75em;
+            font-weight: 400;
+            opacity: 0.7;
+            margin-top: 2px;
+        }
 
         /* ===== 提交按钮（漫画大按钮） ===== */
         .btn {
@@ -545,19 +554,11 @@
 
         <!-- 3. 风格 -->
         <div class="card" style="position:relative">
-            <h2><span class="num">3</span> 风格设置</h2>
-            <div class="form-group">
-                <label>风格预设</label>
-                <select id="style-preset" onchange="onStylePresetChange()" style="
-                    width:100%; padding:10px 14px; background:#fff; border:2px solid #000;
-                    border-radius:4px; font-size:0.95em; font-family:inherit; cursor:pointer;
-                    appearance:none; background-image:url('data:image/svg+xml;utf8,<svg fill=\"%23FB7299\" viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>');
-                    background-repeat:no-repeat; background-position:right 10px center; background-size:20px;
-                ">
-                    <option value="">加载中...</option>
-                </select>
+            <h2><span class="num">3</span> 风格模板</h2>
+            <div class="style-grid" id="style-grid">
+                <!-- JS 动态渲染 -->
             </div>
-            <p id="style-desc" style="font-size:0.85em; color:#666; margin-top:8px; min-height:1.2em;"></p>
+            <p id="style-desc" style="font-size:0.85em; color:#666; margin-top:12px; min-height:1.2em; text-align:center;"></p>
             <input type="hidden" id="style-value" value="dynamic">
             <input type="hidden" id="style-preset-value" value="">
         </div>
@@ -703,44 +704,73 @@
             else span.textContent = input.files.length + " 个文件";
         }
 
-        // ===== 风格选择 =====
+        // ===== 风格选择（卡片模式） =====
         let _stylePresets = [];
+
+        // 每个模板的图标和中文名
+        const _styleMeta = {
+            action:      { icon: "💥", cn: "动作大片", tag: "快切·高能" },
+            vlog:        { icon: "📷", cn: "Vlog 日常", tag: "稳定·明亮" },
+            documentary: { icon: "🎞️", cn: "纪录片", tag: "沉稳·自然" },
+            wedding:     { icon: "💍", cn: "婚礼浪漫", tag: "暖色·柔美" },
+            gaming:      { icon: "🎮", cn: "游戏集锦", tag: "高对比·快节奏" },
+            mtv:         { icon: "🎤", cn: "MTV 风格", tag: "节奏感·炫酷" },
+            sport:       { icon: "⚽", cn: "体育高燃", tag: "高速·冲击" },
+            travel:      { icon: "✈️", cn: "旅行日记", tag: "金色调·舒缓" },
+            cinematic:   { icon: "🎬", cn: "电影感", tag: "史诗·质感" },
+            viral:       { icon: "🔥", cn: "爆款短视频", tag: "鲜艳·抓眼球" },
+            lofi:        { icon: "🌙", cn: "Lo-Fi 氛围", tag: "复古·慵懒" },
+        };
 
         async function loadStylePresets() {
             try {
                 const resp = await fetch("/api/styles");
                 _stylePresets = await resp.json();
-                const sel = document.getElementById("style-preset");
-                sel.innerHTML = '<option value="">自定义 (基础风格)</option>' +
-                    _stylePresets.map(s =>
-                        `<option value="${s.id}">${s.name} - ${s.description}</option>`
-                    ).join("");
-                // 默认选中 action
-                sel.value = "action";
-                onStylePresetChange();
             } catch (e) {
-                document.getElementById("style-preset").innerHTML =
-                    '<option value="dynamic">动感快切</option>' +
-                    '<option value="calm">舒缓流畅</option>' +
-                    '<option value="intense">激烈高燃</option>';
+                // 降级：用内置数据
+                _stylePresets = [
+                    { id: "action", name: "Action Blockbuster", description: "Explosive energy, rapid cuts" },
+                    { id: "vlog", name: "Vlog Daily", description: "Stable, bright, everyday feel" },
+                    { id: "documentary", name: "Documentary", description: "Calm, natural pacing" },
+                    { id: "wedding", name: "Wedding Romantic", description: "Warm tones, soft transitions" },
+                    { id: "gaming", name: "Gaming Highlights", description: "High contrast, fast rhythm" },
+                    { id: "mtv", name: "MTV Style", description: "Rhythmic, flashy cuts" },
+                    { id: "sport", name: "Sport Highlights", description: "High speed, impactful" },
+                    { id: "travel", name: "Travel Diary", description: "Golden hour, relaxed" },
+                    { id: "cinematic", name: "Cinematic Epic", description: "Epic pacing, filmic look" },
+                    { id: "viral", name: "Viral Short", description: "Vibrant, eye-catching" },
+                    { id: "lofi", name: "Lo-Fi Chill", description: "Dreamy, vintage vibes" },
+                ];
             }
+            renderStyleGrid();
         }
 
-        function onStylePresetChange() {
-            const sel = document.getElementById("style-preset");
-            const presetId = sel.value;
+        function renderStyleGrid() {
+            const grid = document.getElementById("style-grid");
+            grid.innerHTML = _stylePresets.map(s => {
+                const meta = _styleMeta[s.id] || { icon: "🎨", cn: s.name, tag: "" };
+                return `<div class="style-option" data-id="${s.id}" onclick="selectStyle('${s.id}', this)">
+                    <span class="style-icon">${meta.icon}</span>
+                    <span class="style-name">${meta.cn}</span>
+                    <span class="style-tag">${meta.tag}</span>
+                </div>`;
+            }).join("");
+            // 默认选中 action
+            const defaultEl = grid.querySelector('[data-id="action"]');
+            if (defaultEl) selectStyle("action", defaultEl);
+        }
+
+        function selectStyle(presetId, el) {
+            // 取消之前的选中
+            document.querySelectorAll(".style-option").forEach(o => o.classList.remove("active"));
+            el.classList.add("active");
+
             document.getElementById("style-preset-value").value = presetId;
 
-            if (!presetId) {
-                document.getElementById("style-value").value = "dynamic";
-                document.getElementById("style-desc").textContent = "使用基础风格：动感快切";
-                return;
-            }
-
             const preset = _stylePresets.find(s => s.id === presetId);
-            if (preset) {
-                document.getElementById("style-desc").textContent = preset.description;
-            }
+            const meta = _styleMeta[presetId] || {};
+            document.getElementById("style-desc").textContent =
+                preset ? `${meta.icon || ""} ${preset.description}` : "";
 
             // 映射到基础风格
             const styleMap = {
