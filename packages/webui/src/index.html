@@ -295,6 +295,22 @@
             margin-top: 2px;
         }
 
+        /* ===== 转场模板小卡片 ===== */
+        .trans-option {
+            padding: 8px 4px;
+            background: #fff;
+            border: 2px solid #000;
+            cursor: pointer;
+            text-align: center;
+            font-size: 0.78em;
+            font-weight: 700;
+            transition: all 0.12s;
+            user-select: none;
+        }
+        .trans-option:hover { background: #ffe4ec; }
+        .trans-option.active { background: #FB7299; color: #fff; border-color: #000; }
+        .trans-option .trans-icon { font-size: 1.2em; display: block; margin-bottom: 2px; }
+
         /* ===== 高级设置（折叠面板） ===== */
         .adv-toggle {
             display: flex;
@@ -701,6 +717,15 @@
             </div>
             <div class="adv-panel" id="adv-panel">
 
+                <!-- 转场模板 -->
+                <div class="form-group">
+                    <label>转场风格</label>
+                    <div class="style-grid" id="transition-grid" style="grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 6px;">
+                        <!-- JS 动态渲染 -->
+                    </div>
+                    <p id="transition-desc" style="font-size:0.8em; color:#888; margin-top:6px; text-align:center; min-height:1.2em;"></p>
+                </div>
+
                 <!-- 输出比例 -->
                 <div class="form-group">
                     <label>输出比例</label>
@@ -1038,6 +1063,50 @@
             document.getElementById("style-value").value = styleMap[presetId] || "dynamic";
         }
 
+        // ===== 转场模板 =====
+        let _transitionPatterns = [];
+
+        async function loadTransitionPatterns() {
+            try {
+                const resp = await fetch("/api/transitions");
+                _transitionPatterns = await resp.json();
+            } catch (e) {
+                _transitionPatterns = [
+                    { id: "auto", name: "智能推荐", description: "根据节拍和风格自动选择", icon: "🤖" },
+                    { id: "hard_cut", name: "硬切流", description: "全部硬切，干净利落", icon: "✂️" },
+                    { id: "mtv_energy", name: "MTV 高能", description: "闪光+缩放+硬切交替", icon: "⚡" },
+                    { id: "cinematic_flow", name: "电影质感", description: "溶解+淡入淡出为主", icon: "🎬" },
+                    { id: "smooth_slide", name: "丝滑滑动", description: "方向滑动转场", icon: "🌊" },
+                    { id: "action_whip", name: "动作甩切", description: "快速模糊+滑动", icon: "💥" },
+                    { id: "dreamy_fade", name: "梦幻渐变", description: "圆形开合+径向", icon: "🌙" },
+                    { id: "retro_wipe", name: "复古擦除", description: "对角线+矩形裁切", icon: "📼" },
+                    { id: "vlog_gentle", name: "Vlog 温柔", description: "淡入淡出+柔和溶解", icon: "📷" },
+                    { id: "random_mix", name: "随机混搭", description: "随机转场组合", icon: "🎲" },
+                ];
+            }
+            renderTransitionGrid();
+        }
+
+        function renderTransitionGrid() {
+            const grid = document.getElementById("transition-grid");
+            grid.innerHTML = _transitionPatterns.map(p =>
+                `<div class="trans-option" data-id="${p.id}" onclick="selectTransition('${p.id}', this)" title="${p.description}">
+                    <span class="trans-icon">${p.icon}</span>
+                    ${p.name}
+                </div>`
+            ).join("");
+            // 默认选中 auto
+            const defaultEl = grid.querySelector('[data-id="auto"]');
+            if (defaultEl) selectTransition("auto", defaultEl);
+        }
+
+        function selectTransition(id, el) {
+            document.querySelectorAll(".trans-option").forEach(o => o.classList.remove("active"));
+            el.classList.add("active");
+            const pattern = _transitionPatterns.find(p => p.id === id);
+            document.getElementById("transition-desc").textContent = pattern ? pattern.description : "";
+        }
+
         // ===== 高级设置 =====
         function toggleAdvPanel() {
             const toggle = document.querySelector(".adv-toggle");
@@ -1071,6 +1140,10 @@
 
         // 收集高级设置数据
         function getAdvancedSettings() {
+            // 转场模板
+            const transEl = document.querySelector(".trans-option.active");
+            const transitionPattern = transEl ? transEl.dataset.id : "auto";
+
             // 输出比例
             const ratioEl = document.querySelector(".ratio-option.active");
             const aspectRatio = ratioEl ? ratioEl.dataset.ratio : "16/9";
@@ -1092,7 +1165,7 @@
             const enhanceChips = document.querySelectorAll(".chip.active");
             const enhanceOptions = Array.from(enhanceChips).map(c => c.dataset.enhance);
 
-            return { aspectRatio, enableSubtitles, subtitleStyle, subtitleLang, colorGrade, enableDucking, enableHarmonize, enhanceOptions };
+            return { transitionPattern, aspectRatio, enableSubtitles, subtitleStyle, subtitleLang, colorGrade, enableDucking, enableHarmonize, enhanceOptions };
         }
 
         // ===== 上传 & 提交 =====
@@ -1270,6 +1343,7 @@
 
                 // 高级设置
                 const adv = getAdvancedSettings();
+                formData.append("transition_pattern", adv.transitionPattern);
                 formData.append("aspect_ratio", adv.aspectRatio);
                 formData.append("enable_subtitles", adv.enableSubtitles ? "true" : "false");
                 if (adv.enableSubtitles) {
@@ -1369,6 +1443,7 @@
         // 初始化
         renderSourceTable();
         loadStylePresets();
+        loadTransitionPatterns();
     </script>
 </body>
 </html>

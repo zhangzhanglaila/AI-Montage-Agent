@@ -57,7 +57,12 @@
       "Bash(ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/test_final2.mp4)",
       "Bash(ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/test_final3.mp4)",
       "Bash(ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/final_montage.mp4)",
-      "Bash(ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/final_montage2.mp4)"
+      "Bash(ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 output/final_montage2.mp4)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'fix: 搜索下载改为后台执行+进度实时反馈 *)",
+      "Bash(git commit -m 'feat: 风格模板改为可视化卡片选择 *)",
+      "Bash(git commit -m 'feat: WebUI 新增高级设置面板（6大功能） *、)",
+      "Bash(git commit -m 'feat: 转场模板系统 - 10种预设+30+种FFmpeg转场效果 *)"
     ]
   }
 }

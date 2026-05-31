@@ -434,7 +434,8 @@ class BeatSyncEngine:
         self,
         shots: List[Shot],
         beats: List[Beat],
-        style: str = "dynamic"
+        style: str = "dynamic",
+        transition_pattern: dict = None,
     ) -> List[TimelineEntry]:
         """
         将镜头与节拍同步
@@ -481,9 +482,17 @@ class BeatSyncEngine:
                 shot.highlight_score, beat.beat_type, style_cfg
             )
 
-            # 转场：与 BPM 同步
-            transition_type = self._pick_transition(beat, shot, style)
-            transition_duration = beat_interval * 0.5 if transition_type != "cut" else 0.0
+            # 转场：支持模板系统
+            transition_type = self._pick_transition(beat, shot, style, transition_pattern)
+            if transition_pattern and transition_type != "cut":
+                # 用模板的时长比例
+                dur_ratio = transition_pattern.get(
+                    "strong_duration_ratio" if beat.beat_type == "strong" else "weak_duration_ratio",
+                    0.5
+                )
+                transition_duration = beat_interval * dur_ratio
+            else:
+                transition_duration = beat_interval * 0.5 if transition_type != "cut" else 0.0
 
             # 创建时间线条目
             entry = TimelineEntry(
@@ -592,9 +601,16 @@ class BeatSyncEngine:
         min_speed, max_speed = cfg["speed_range"]
         return max(min_speed, min(speed, max_speed))
 
-    def _pick_transition(self, beat: Beat, shot: Shot, style: str) -> str:
-        """根据拍类型和风格选择转场效果"""
-        # 强拍用更有冲击力的转场
+    def _pick_transition(self, beat: Beat, shot: Shot, style: str,
+                         transition_pattern: dict = None) -> str:
+        """根据拍类型、风格和转场模板选择转场效果"""
+        if transition_pattern:
+            from packages.montage_engine.src.transition_patterns import pick_transition
+            motion = getattr(shot, 'motion_score', 0.0) or 0.0
+            trans_type, _ = pick_transition(transition_pattern, beat.beat_type, motion)
+            return trans_type
+
+        # 旧逻辑：根据风格随机选
         if beat.beat_type == "strong":
             if style == "intense":
                 return random.choice(["flash", "zoom", "cut"])
@@ -603,7 +619,6 @@ class BeatSyncEngine:
             else:
                 return random.choice(["cut", "fade", "flash"])
 
-        # 弱拍用平滑转场
         if style == "intense":
             return "cut"
         elif style == "calm":
@@ -792,6 +807,25 @@ class VideoRenderer:
             "fade": "fade", "dissolve": "dissolve",
             "wipe": "wipeleft", "flash": "fadeblack",
             "zoom": "circlecrop", "blur": "fadeblack",
+            "motion_blur": "fadeblack",
+            "wipeleft": "wipeleft", "wiperight": "wiperight",
+            "wipeup": "wipeup", "wipedown": "wipedown",
+            "slideleft": "slideleft", "slideright": "slideright",
+            "slideup": "slideup", "slidedown": "slidedown",
+            "smoothleft": "smoothleft", "smoothright": "smoothright",
+            "smoothup": "smoothup", "smoothdown": "smoothdown",
+            "circleopen": "circleopen", "circleclose": "circleclose",
+            "circlecrop": "circlecrop", "rectcrop": "rectcrop",
+            "diagtl": "diagtl", "diagtr": "diagtr",
+            "diagbl": "diagbl", "diagbr": "diagbr",
+            "vertopen": "vertopen", "vertclose": "vertclose",
+            "horzopen": "horzopen", "horzclose": "horzclose",
+            "radial": "radial", "pixelize": "pixelize",
+            "distance": "distance", "fadeblack": "fadeblack",
+            "fadewhite": "fadewhite",
+            "hlslice": "hlslice", "hrslice": "hrslice",
+            "vuslice": "vuslice", "vdslice": "vdslice",
+            "shake": "fadeblack",
         }
 
         for j in range(1, len(indices)):
@@ -976,6 +1010,7 @@ class MontagePipeline:
         duck_level_db: float = -12.0,
         enable_harmonize: bool = False,
         harmonize_strength: float = 0.5,
+        transition_pattern: dict = None,
     ) -> str:
         """
         运行完整混剪流程
@@ -1069,7 +1104,7 @@ class MontagePipeline:
         max_shots = min(50, len(balanced_shots))
         top_shots = balanced_shots[:max_shots]
         print(f"  选择 Top {max_shots} 高光镜头（共 {len(all_shots)} 个，来自 {len(video_shots)} 个视频）")
-        timeline = self.sync_engine.sync(top_shots, beat_analysis.beats, style)
+        timeline = self.sync_engine.sync(top_shots, beat_analysis.beats, style, transition_pattern)
 
         if not timeline:
             raise ValueError("时间线为空")

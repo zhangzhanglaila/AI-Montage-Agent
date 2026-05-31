@@ -36,7 +36,8 @@ def _run_montage_task(task_id: str, video_paths: list, bgm_path: str, bgm_query:
                       aspect_ratio: str = "16/9", enable_subtitles: bool = False,
                       subtitle_style: str = "tiktok", subtitle_lang: str = "auto",
                       color_grade: str = "none", enable_ducking: bool = False,
-                      enable_harmonize: bool = False, enhance_options: list = None):
+                      enable_harmonize: bool = False, enhance_options: list = None,
+                      transition_pattern_id: str = "auto"):
     """后台运行完整流程：搜索下载 → pipeline → 后处理"""
     import sys
     import traceback
@@ -132,6 +133,10 @@ def _run_montage_task(task_id: str, video_paths: list, bgm_path: str, bgm_query:
         # 合并色彩分级：高级设置优先，其次用风格模板的
         final_color_grade = color_grade if color_grade and color_grade != "none" else color_preset
 
+        # 加载转场模板
+        from packages.montage_engine.src.transition_patterns import get_pattern
+        trans_pattern = get_pattern(transition_pattern_id) if transition_pattern_id != "auto" else None
+
         pipeline = MontagePipeline(cache_dir="cache", output_dir="output")
         result = pipeline.run(
             video_paths, bgm_path, style, output_name,
@@ -141,6 +146,7 @@ def _run_montage_task(task_id: str, video_paths: list, bgm_path: str, bgm_query:
             reframe_aspect=reframe_aspect,
             enable_ducking=enable_ducking,
             enable_harmonize=enable_harmonize,
+            transition_pattern=trans_pattern,
         )
 
         # ===== 阶段 4：后处理 =====
@@ -217,6 +223,13 @@ async def list_styles():
     return get_style_names()
 
 
+@app.get("/api/transitions")
+async def list_transitions():
+    """获取可用转场模板列表"""
+    from packages.montage_engine.src.transition_patterns import list_patterns
+    return list_patterns()
+
+
 @app.post("/api/upload/video")
 async def upload_video(files: list[UploadFile] = File(...)):
     """上传视频文件"""
@@ -259,6 +272,7 @@ async def create_montage(
     enable_ducking: str = Form("false"),
     enable_harmonize: str = Form("false"),
     enhance_options: str = Form("[]"),
+    transition_pattern: str = Form("auto"),
 ):
     """创建混剪任务 — 立即返回 task_id，搜索下载在后台进行"""
     task_id = uuid.uuid4().hex
@@ -292,6 +306,7 @@ async def create_montage(
         style, output_name, query, source, clip_limit, color_preset, stabilize,
         aspect_ratio, enable_subtitles == "true", subtitle_style, subtitle_lang,
         color_grade, enable_ducking == "true", enable_harmonize == "true", _enhance,
+        transition_pattern,
     )
 
     return {"task_id": task_id}
