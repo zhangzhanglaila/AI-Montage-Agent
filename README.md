@@ -1,7 +1,14 @@
 # AI Montage Agent
 
-> AI 自动影视混剪 Agent —— 输入视频 + BGM，自动生成卡点混剪。
-> AI-powered auto video-montage agent — feed it clips + music, get a beat-synced edit.
+<p>
+  <img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/FFmpeg-required-green?logo=ffmpeg&logoColor=white" alt="FFmpeg required">
+  <img src="https://img.shields.io/badge/WebUI-FastAPI-009688?logo=fastapi&logoColor=white" alt="WebUI FastAPI">
+  <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
+</p>
+
+> **AI 自动影视混剪 Agent** —— 输入视频 + BGM，自动生成卡点混剪。<br>
+> **AI-powered auto video-montage agent** — feed it clips + music, get a beat-synced edit.
 
 **语言 / Language:** [简体中文](#简体中文) · [English](#english)
 
